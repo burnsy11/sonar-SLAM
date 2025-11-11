@@ -27,7 +27,7 @@ from bruce_slam.slam import SLAM, Keyframe
 from bruce_slam import pcl
 
 # Sonar Oculus imports
-from oculus_interfaces.msg import OculusPing
+from oculus_interfaces.msg import Ping
 
 
 class SLAMNode(Node, SLAM):
@@ -139,12 +139,12 @@ class SLAMNode(Node, SLAM):
         loginfo("SLAM node is initialized")
 
     @add_lock
-    def sonar_callback(self, ping:OculusPing)->None:
+    def sonar_callback(self, ping:Ping)->None:
         """Subscribe once to configure Oculus property.
         Assume sonar configuration doesn't change much.
 
         Args:
-            ping (OculusPing): The sonar message. 
+            ping (Ping): The sonar message. 
         """
         
         self.oculus.configure(ping)

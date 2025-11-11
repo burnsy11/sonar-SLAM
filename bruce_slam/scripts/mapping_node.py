@@ -57,7 +57,7 @@ class MappingNode(Node, Mapping):
         self.min_translation = self.get_parameter(ns + "min_translation").value  # CHECK: declare_parameter needed first
         self.min_rotation = self.get_parameter(ns + "min_rotation").value  # CHECK: declare_parameter needed first
 
-        self.sonar_sub = Subscriber(self, SONAR_TOPIC, OculusPing)
+        self.sonar_sub = Subscriber(self, SONAR_TOPIC, Ping)
         if self.use_slam_traj:
             self.traj_sub = Subscriber(SLAM_TRAJ_TOPIC, PointCloud2)
         else:
@@ -199,8 +199,9 @@ if __name__ == "__main__":
     if not args.file:
         loginfo("Start online mapping...")
         rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
     else:
         loginfo("Start offline mapping...")
         offline(args)
+    
+    node.destroy_node()
+    rclpy.shutdown()

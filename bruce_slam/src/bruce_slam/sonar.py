@@ -49,13 +49,15 @@ class OculusFireMsg(object):
         self.salinity = None
 
     def configure(self, ping):
-        self.mode = ping.fire_msg.mode
-        self.gamma = ping.fire_msg.gamma / 255.0
-        self.flags = ping.fire_msg.flags
-        self.range = ping.fire_msg.range
-        self.gain = ping.fire_msg.gain
-        self.speed_of_sound = ping.fire_msg.speed_of_sound
-        self.salinity = ping.fire_msg.salinity
+        # New Ping message has master_mode instead of fire_msg.mode
+        self.mode = ping.master_mode
+        # Gamma is not directly available in new message, set to default
+        self.gamma = 1.0  # Default gamma correction
+        self.flags = 0  # Not available in new message
+        self.range = ping.range
+        self.gain = ping.gain_percent
+        self.speed_of_sound = ping.speed_of_sound_used
+        self.salinity = 0.0  # Not available in new message
 
     def __str__(self):
         return (
@@ -189,18 +191,19 @@ class OculusProperty(object):
     def configure(self, ping):
         self.fire_msg.configure(ping)
 
-        if "part_number" not in ping.__slots__:
-            # backward compatibility
+        # New Ping message doesn't have part_number, determine from frequency
+        # 1.2 MHz is M1200d, 2.1 MHz is M750d (high freq mode)
+        if ping.frequency > 1.5e6:  # > 1.5 MHz
             self.model = "M750d"
         else:
-            self.model = OculusProperty.OCULUS_PART_NUMBER[ping.part_number]
+            self.model = "M1200d"
 
         changed = False
         if (
-            ping.num_ranges != self.num_ranges
+            ping.n_ranges != self.num_ranges
             or ping.range_resolution != self.range_resolution
         ):
-            self.num_ranges = ping.num_ranges
+            self.num_ranges = ping.n_ranges
             self.range_resolution = ping.range_resolution
             self.ranges = self.range_resolution * (1 + np.arange(self.num_ranges))
             self.max_range = self.ranges[-1]
@@ -211,11 +214,12 @@ class OculusProperty(object):
 
         if len(ping.bearings) != self.num_bearings:
             self.num_bearings = len(ping.bearings)
-            self.bearings = np.deg2rad(np.array(ping.bearings, np.float32) / 100)
+            # New Ping message has bearings in 100th of degree
+            self.bearings = np.deg2rad(np.array(ping.bearings, np.float32) * 0.01)
             self.horizontal_aperture = abs(self.bearings[-1] - self.bearings[0])
             self.angular_resolution = self.horizontal_aperture / self.num_bearings
             self.vertical_aperture = OculusProperty.OCULUS_VERTICAL_APERTURE[
-                self.fire_msg.mode
+                ping.master_mode
             ]
 
             self.b2c = interp1d(

@@ -212,11 +212,11 @@ def g2r(gtsam_obj:gtsam.Pose3) -> Pose:
 bridge = CvBridge()
 
 
-def r2n(ros_msg:OculusPing) -> np.array:
-    """Convert a ros message of type OculusPing to a numpy array
+def r2n(ros_msg) -> np.array:
+    """Convert a ros message to a numpy array
 
     Args:
-        ros_msg (OculusPing): the input sonar message
+        ros_msg: the input message (Ping, Image, or PointCloud2)
 
     Raises:
         NotImplementedError: catch the wrong types
@@ -225,12 +225,31 @@ def r2n(ros_msg:OculusPing) -> np.array:
         np.array: the image data in numpy array form
     """
 
-    if ros_msg._type == "oculus_interfaces/OculusPing":
+    if ros_msg._type == "oculus_interfaces/Ping":
+        # Extract image data from new Ping message format
+        n_ranges = ros_msg.n_ranges
+        n_beams = ros_msg.n_beams
+        sample_size = ros_msg.sample_size
+        step = ros_msg.step
+        has_gains = ros_msg.has_gains
         
-        img = r2n(ros_msg.ping)
-        img = np.clip(
-            cv2.pow(img / 255.0, 255.0 / ros_msg.fire_msg.gamma) * 255.0, 0, 255
-        )
+        # Convert ping_data to numpy array
+        ping_data = np.frombuffer(ros_msg.ping_data, dtype=np.uint8)
+        
+        # If gains are present, each row starts with 4 bytes of gain data
+        if has_gains:
+            # Reconstruct image, removing gain data from each row
+            img_data = []
+            for i in range(n_ranges):
+                row_start = i * step
+                # Skip first 4 bytes (gain) and extract the actual image data
+                row_data = ping_data[row_start + 4 : row_start + 4 + n_beams * sample_size]
+                img_data.append(row_data)
+            img = np.array(img_data, dtype=np.uint8).reshape(n_ranges, n_beams)
+        else:
+            # No gains, just reshape the data
+            img = ping_data.reshape(n_ranges, n_beams).astype(np.uint8)
+        
         return np.float32(img)
     elif ros_msg._type == "sensor_msgs/Image":
         img = bridge.imgmsg_to_cv2(ros_msg, desired_encoding="passthrough")
