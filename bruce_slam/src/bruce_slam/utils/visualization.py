@@ -5,9 +5,8 @@ from matplotlib.patches import Ellipse
 from shapely import geometry
 
 import cv2
-import rospy
 from sensor_msgs.msg import PointCloud2
-import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs_py import point_cloud2 as pc2
 
 from geometry_msgs.msg import Point
 from std_msgs.msg import ColorRGBA
@@ -112,7 +111,8 @@ def ros_colorline(xyz):
 
     xyzi = np.c_[xyz, np.array([[i] for i in range(len(xyz))])]
 
-    header = rospy.Header()
+    from std_msgs.msg import Header
+    header = Header()
     return pc2.create_cloud(header, fields, xyzi)
 
 
@@ -129,7 +129,8 @@ def ros_colorline_trajectory(traj):
 
     traji = np.c_[traj, np.mgrid[0 : len(traj)]]
 
-    header = rospy.Header()
+    from std_msgs.msg import Header
+    header = Header()
     return pc2.create_cloud(header, fields, traji)
 
 

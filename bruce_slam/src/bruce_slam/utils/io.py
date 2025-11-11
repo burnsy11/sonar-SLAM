@@ -4,11 +4,21 @@ from functools import wraps
 import numpy as np
 from tqdm.auto import tqdm
 from threading import Event
-import rospy
+import rclpy
+from rclpy.time import Time as RclpyTime
+from rclpy.duration import Duration as RclpyDuration
 
 offline = False
 callback_lock_event = Event()
 callback_lock_event.set()
+
+# Global logger reference for utility functions
+_global_logger = None
+
+def set_global_logger(logger):
+    """Set the global logger for utility functions"""
+    global _global_logger
+    _global_logger = logger
 
 
 def add_lock(callback):
@@ -81,28 +91,40 @@ def loginfo(msg):
     if offline:
         tqdm.write(msg)
     else:
-        rospy.loginfo(msg)
+        if _global_logger:
+            _global_logger.info(msg)
+        else:
+            print(f"[INFO] {msg}")
 
 
 def logdebug(msg):
     if offline:
         tqdm.write(colorlog(LOGCOLORS.BLUE, msg))
     else:
-        rospy.logdebug(msg)
+        if _global_logger:
+            _global_logger.debug(msg)
+        else:
+            print(f"[DEBUG] {msg}")
 
 
 def logwarn(msg):
     if offline:
         tqdm.write(colorlog(LOGCOLORS.YELLOW, msg))
     else:
-        rospy.logwarn(msg)
+        if _global_logger:
+            _global_logger.warning(msg)
+        else:
+            print(f"[WARN] {msg}")
 
 
 def logerror(msg):
     if offline:
         tqdm.write(colorlog(LOGCOLORS.RED, msg))
     else:
-        rospy.logerror(msg)
+        if _global_logger:
+            _global_logger.error(msg)
+        else:
+            print(f"[ERROR] {msg}")
 
 
 def common_parser(description="node"):
@@ -128,43 +150,81 @@ def common_parser(description="node"):
 
 
 def read_bag(file, start=None, duration=None, progress=True):
-    import rosbag
-    # from .topics import IMU_TOPIC, DVL_TOPIC, DEPTH_TOPIC, SONAR_TOPIC
+    from rosbags.rosbag2 import Reader
+    from rosbags.serde import deserialize_cdr
+    from rclpy.serialization import deserialize_message
+    from rosidl_runtime_py.utilities import get_message
+    
+    # Try ROS2 bag first, fall back to ROS1 if needed
+    try:
+        with Reader(file) as reader:
+            start = start if start is not None else 0
+            start_time_ns = int((reader.start_time + start * 1e9))
+            end_time_ns = reader.end_time
+            
+            if duration is None or duration < 0 or duration == float("inf"):
+                duration = (end_time_ns - start_time_ns) / 1e9
+            else:
+                end_time_ns = int(start_time_ns + duration * 1e9)
 
-    bag = rosbag.Bag(file)
-    start = start if start is not None else 0
-    start_time = bag.get_start_time() + start
-    end_time = bag.get_end_time()
-    if duration is None or duration < 0 or duration == float("inf"):
-        duration = end_time - start_time
-    else:
-        end_time = start_time + duration
+            if progress:
+                pbar = tqdm(total=int(duration), unit="s")
+                
+            for connection, timestamp, rawdata in reader.messages():
+                if timestamp < start_time_ns or timestamp > end_time_ns:
+                    continue
+                    
+                msg_type = get_message(connection.msgtype)
+                msg = deserialize_message(rawdata, msg_type)
+                
+                if progress:
+                    elapsed = (timestamp - start_time_ns) / 1e9
+                    pbar.update(int(elapsed) - pbar.n)
+                    
+                yield connection.topic, msg
+    except Exception as e:
+        # Fall back to ROS1 rosbag
+        logwarn(f"Failed to read as ROS2 bag, trying ROS1 format: {e}")
+        import rosbag
+        
+        bag = rosbag.Bag(file)
+        start = start if start is not None else 0
+        start_time = bag.get_start_time() + start
+        end_time = bag.get_end_time()
+        if duration is None or duration < 0 or duration == float("inf"):
+            duration = end_time - start_time
+        else:
+            end_time = start_time + duration
 
-    if progress:
-        pbar = tqdm(total=int(duration), unit="s")
-    for topic, msg, t in bag.read_messages(
-        # topics=[IMU_TOPIC, DVL_TOPIC, DEPTH_TOPIC, SONAR_TOPIC],
-        start_time=rospy.Time.from_sec(start_time),
-        end_time=rospy.Time.from_sec(end_time),
-    ):
         if progress:
-            pbar.update(int(t.to_sec() - start_time) - pbar.n)
-        yield topic, msg
+            pbar = tqdm(total=int(duration), unit="s")
+        for topic, msg, t in bag.read_messages(
+            start_time=RclpyTime(seconds=start_time).to_msg(),
+            end_time=RclpyTime(seconds=end_time).to_msg(),
+        ):
+            if progress:
+                pbar.update(int(t.to_sec() - start_time) - pbar.n)
+            yield topic, msg
 
-    bag.close()
+        bag.close()
 
 
 def get_log_dir():
-    import subprocess
-
-    return subprocess.check_output("roslaunch-logs").strip()
+    import os
+    import pathlib
+    # In ROS2, use ~/.ros/log or ROS_LOG_DIR environment variable
+    log_dir = os.environ.get('ROS_LOG_DIR', os.path.expanduser('~/.ros/log'))
+    pathlib.Path(log_dir).mkdir(parents=True, exist_ok=True)
+    return log_dir
 
 
 def create_log(suffix, timestamp=None):
     import datetime
+    import os
 
     if timestamp is None:
-        timestamp = rospy.Time.now().to_sec()
+        # Get current time in seconds
+        timestamp = time.time()
 
     now = datetime.datetime.fromtimestamp(timestamp)
     log_name = now.strftime("%Y-%m-%d-%H-%M-%S-") + suffix
@@ -180,7 +240,8 @@ def load_nav_data(file, start=0, duration=None, progress=True):
 
     dvl, depth, imu = [], [], []
     for topic, msg in read_bag(file, start, duration, progress):
-        time = msg.header.stamp.to_sec()
+        # Convert ROS2 time to seconds
+        time = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         if topic == DVL_TOPIC:
             dvl.append(
                 (time, msg.velocity.x, msg.velocity.y, msg.velocity.z, msg.altitude)
