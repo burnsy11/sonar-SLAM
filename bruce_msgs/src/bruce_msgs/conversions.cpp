@@ -44,27 +44,28 @@ namespace bruce_msgs
 {
 ISAM2UpdatePtr toMsg(const ISAM2 &isam2, const NonlinearFactorGraph &graph, const Values &values)
 {
-  ISAM2UpdatePtr slam_update_msg(new ISAM2Update);
+  ISAM2UpdatePtr slam_update_msg = std::make_shared<bruce_msgs::msg::ISAM2Update>();
   std::string isam2_str = serializeBinary(isam2);
   slam_update_msg->isam2.insert(slam_update_msg->isam2.begin(), isam2_str.begin(), isam2_str.end());
   std::string graph_str = serializeBinary(graph);
   slam_update_msg->graph.insert(slam_update_msg->graph.begin(), graph_str.begin(), graph_str.end());
   std::string values_str = serializeBinary(values);
   slam_update_msg->values.insert(slam_update_msg->values.begin(), values_str.begin(), values_str.end());
+  return slam_update_msg;
 }
-void fromMsg(const ISAM2Update &slam_update_msg, gtsam::ISAM2 &isam2)
+void fromMsg(const bruce_msgs::msg::ISAM2Update &slam_update_msg, gtsam::ISAM2 &isam2)
 {
   std::string isam2_str(slam_update_msg.isam2.begin(), slam_update_msg.isam2.end());
   deserializeBinary(isam2_str, isam2);
 }
-void fromMsg(const ISAM2Update &slam_update_msg, gtsam::NonlinearFactorGraph &graph, gtsam::Values &values)
+void fromMsg(const bruce_msgs::msg::ISAM2Update &slam_update_msg, gtsam::NonlinearFactorGraph &graph, gtsam::Values &values)
 {
   std::string graph_str(slam_update_msg.graph.begin(), slam_update_msg.graph.end());
   deserializeBinary(graph_str, graph);
   std::string values_str(slam_update_msg.values.begin(), slam_update_msg.values.end());
   deserializeBinary(values_str, values);
 }
-void fromMsg(const ISAM2Update &slam_update_msg, gtsam::ISAM2 &isam2, gtsam::NonlinearFactorGraph &graph,
+void fromMsg(const bruce_msgs::msg::ISAM2Update &slam_update_msg, gtsam::ISAM2 &isam2, gtsam::NonlinearFactorGraph &graph,
              gtsam::Values &values)
 {
   std::string isam2_str(slam_update_msg.isam2.begin(), slam_update_msg.isam2.end());
