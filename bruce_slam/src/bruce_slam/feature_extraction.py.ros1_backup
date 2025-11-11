@@ -1,18 +1,10 @@
-# NOTE: This file was auto-converted from ROS1 to ROS2
-# Manual review and testing required for:
-# - Parameter declarations (declare_parameter before get_parameter)
-# - Time conversions may need adjustment
-# - Transform broadcasting may need geometry_msgs imports
-# - Message filter callbacks may need adjustment
-
 #!/usr/bin/env python
 import numpy as np
 import cv2
-import rclpy
-from rclpy.node import Node
+import rospy
 from sensor_msgs.msg import PointCloud2, Image
-from cv_bridge import CvBridge
-# ros_numpy replaced with sensor_msgs_py in ROS2
+import cv_bridge
+import ros_numpy
 
 from bruce_slam.utils.io import *
 from bruce_slam.utils.topics import *
@@ -31,7 +23,7 @@ from bruce_slam.CFAR import CFAR
 
 #from bruce_slam.bruce_slam import sonar
 
-class FeatureExtraction(Node):
+class FeatureExtraction(object):
     '''Class to handle extracting features from Sonar images using CFAR
     subsribes to the sonar driver and publishes a point cloud
     '''
@@ -91,35 +83,35 @@ class FeatureExtraction(Node):
     def init_node(self, ns="~"):
 
         #read in CFAR parameters
-        self.Ntc = self.get_parameter(ns + "CFAR/Ntc").value  # CHECK: declare_parameter needed first
-        self.Ngc = self.get_parameter(ns + "CFAR/Ngc").value  # CHECK: declare_parameter needed first
-        self.Pfa = self.get_parameter(ns + "CFAR/Pfa").value  # CHECK: declare_parameter needed first
-        self.rank = self.get_parameter(ns + "CFAR/rank").value  # CHECK: declare_parameter needed first
-        self.alg = self.get_parameter(ns + "CFAR/alg", "SOCA").value  # CHECK: declare_parameter needed first
-        self.threshold = self.get_parameter(ns + "filter/threshold").value  # CHECK: declare_parameter needed first
+        self.Ntc = rospy.get_param(ns + "CFAR/Ntc")
+        self.Ngc = rospy.get_param(ns + "CFAR/Ngc")
+        self.Pfa = rospy.get_param(ns + "CFAR/Pfa")
+        self.rank = rospy.get_param(ns + "CFAR/rank")
+        self.alg = rospy.get_param(ns + "CFAR/alg", "SOCA")
+        self.threshold = rospy.get_param(ns + "filter/threshold")
 
         #read in PCL downsampling parameters
-        self.resolution = self.get_parameter(ns + "filter/resolution").value  # CHECK: declare_parameter needed first
-        self.outlier_filter_radius = self.get_parameter(ns + "filter/radius").value  # CHECK: declare_parameter needed first
-        self.outlier_filter_min_points = self.get_parameter(ns + "filter/min_points").value  # CHECK: declare_parameter needed first
+        self.resolution = rospy.get_param(ns + "filter/resolution")
+        self.outlier_filter_radius = rospy.get_param(ns + "filter/radius")
+        self.outlier_filter_min_points = rospy.get_param(ns + "filter/min_points")
 
         #parameter to decide how often to skip a frame
-        self.skip = self.get_parameter(ns + "filter/skip").value  # CHECK: declare_parameter needed first
+        self.skip = rospy.get_param(ns + "filter/skip")
 
         #are the incoming images compressed?
-        self.compressed_images = self.get_parameter(ns + "compressed_images").value  # CHECK: declare_parameter needed first
+        self.compressed_images = rospy.get_param(ns + "compressed_images")
 
         #cv bridge
-        self.BridgeInstance = CvBridge()
+        self.BridgeInstance = cv_bridge.CvBridge()
         
         #read in the format
-        self.coordinates = self.get_parameter(
+        self.coordinates = rospy.get_param(
             ns + "visualization/coordinates", "cartesian"
-        ).value  # CHECK: declare_parameter needed first
+        )
 
         #vis parameters
-        self.radius = self.get_parameter(ns + "visualization/radius").value  # CHECK: declare_parameter needed first
-        self.color = self.get_parameter(ns + "visualization/color").value  # CHECK: declare_parameter needed first
+        self.radius = rospy.get_param(ns + "visualization/radius")
+        self.color = rospy.get_param(ns + "visualization/color")
 
         #sonar subsciber
         if self.compressed_images:
@@ -130,10 +122,12 @@ class FeatureExtraction(Node):
                 SONAR_TOPIC_UNCOMPRESSED, OculusPingUncompressed, self.callback, queue_size=10)
 
         #feature publish topic
-        self.feature_pub = self.create_publisher(PointCloud2, SONAR_FEATURE_TOPIC, 10)
+        self.feature_pub = rospy.Publisher(
+            SONAR_FEATURE_TOPIC, PointCloud2, queue_size=10)
 
         #vis publish topic
-        self.feature_img_pub = self.create_publisher(Image, SONAR_FEATURE_IMG_TOPIC, 10)
+        self.feature_img_pub = rospy.Publisher(
+            SONAR_FEATURE_IMG_TOPIC, Image, queue_size=10)
 
         self.configure()
 

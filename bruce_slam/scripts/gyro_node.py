@@ -1,17 +1,21 @@
-#!/usr/bin/env python
-import rospy
+#!/usr/bin/env python3
+import rclpy
 from bruce_slam.utils.io import *
 from bruce_slam.gyro import GyroFilter
 
 if __name__ == "__main__":
-    rospy.init_node("gyro_fusion", log_level=rospy.INFO)
+    rclpy.init()
 
-    node = GyroFilter()
+    node = GyroFilter('gyro_filter')
     node.init_node()
 
     args, _ = common_parser().parse_known_args()
     if not args.file:
         loginfo("Start gyro_fusion...")
-        rospy.spin()
+        rclpy.spin(node)
     else:
-        loginfo("Start gyro_fusion...")
+        loginfo("Start offline gyro_fusion...")
+        # offline mode not implemented for gyro
+
+    node.destroy_node()
+    rclpy.shutdown()

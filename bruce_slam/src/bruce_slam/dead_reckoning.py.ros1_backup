@@ -1,15 +1,6 @@
-# NOTE: This file was auto-converted from ROS1 to ROS2
-# Manual review and testing required for:
-# - Parameter declarations (declare_parameter before get_parameter)
-# - Time conversions may need adjustment
-# - Transform broadcasting may need geometry_msgs imports
-# - Message filter callbacks may need adjustment
-
 # python imports
-import tf2_ros
-from tf2_ros import TransformBroadcaster
-import rclpy
-from rclpy.node import Node
+import tf
+import rospy
 import gtsam
 import numpy as np
 
@@ -31,14 +22,12 @@ from bruce_slam.utils.visualization import ros_colorline_trajectory
 
 import math
 from std_msgs.msg import String, Float32
-from tf_transformations import euler_from_quaternion, quaternion_from_euler
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
-class DeadReckoningNode(Node):
-        def __init__(self, node_name="dead_reckoning"):
-                super().__init__(node_name)
-                set_global_logger(self.get_logger())
+class DeadReckoningNode(object):
 	'''A class to support dead reckoning using DVL and IMU readings
 	'''
+	def __init__(self):
 		self.pose = None #vehicle pose
 		self.prev_time = None #previous reading time
 		self.prev_vel = None #previous reading velocity
@@ -70,32 +59,34 @@ class DeadReckoningNode(Node):
 			ns (str, optional): The namespace of the node. Defaults to "~".
 		"""
 		# Parameters for Node
-		self.imu_pose = self.get_parameter(ns + "imu_pose").value  # CHECK: declare_parameter needed first
+		self.imu_pose = rospy.get_param(ns + "imu_pose")
 		self.imu_pose = n2g(self.imu_pose, "Pose3")
 		self.imu_rot = self.imu_pose.rotation()
-		self.dvl_max_velocity = self.get_parameter(ns + "dvl_max_velocity").value  # CHECK: declare_parameter needed first
-		self.keyframe_duration = self.get_parameter(ns + "keyframe_duration").value  # CHECK: declare_parameter needed first
-		self.keyframe_translation = self.get_parameter(ns + "keyframe_translation").value  # CHECK: declare_parameter needed first
-		self.keyframe_rotation = self.get_parameter(ns + "keyframe_rotation").value  # CHECK: declare_parameter needed first
+		self.dvl_max_velocity = rospy.get_param(ns + "dvl_max_velocity")
+		self.keyframe_duration = rospy.get_param(ns + "keyframe_duration")
+		self.keyframe_translation = rospy.get_param(ns + "keyframe_translation")
+		self.keyframe_rotation = rospy.get_param(ns + "keyframe_rotation")
 
 		# Subscribers and caches
-		self.dvl_sub = Subscriber(self, DVL_TOPIC, DVL)
-		self.gyro_sub = Subscriber(self, GYRO_INTEGRATION_TOPIC, Odometry)
-		self.depth_sub = Subscriber(self, DEPTH_TOPIC, Depth)
+		self.dvl_sub = Subscriber(DVL_TOPIC, DVL)
+		self.gyro_sub = Subscriber(GYRO_INTEGRATION_TOPIC, Odometry)
+		self.depth_sub = Subscriber(DEPTH_TOPIC, Depth)
 		self.depth_cache = Cache(self.depth_sub, 1)
 
-		if self.get_parameter(ns + "imu_version").value  # CHECK: declare_parameter needed first == 1:
-			self.imu_sub = Subscriber(self, IMU_TOPIC, Imu)
-		elif self.get_parameter(ns + "imu_version").value  # CHECK: declare_parameter needed first == 2:
-			self.imu_sub = Subscriber(self, IMU_TOPIC_MK_II, Imu)
+		if rospy.get_param(ns + "imu_version") == 1:
+			self.imu_sub = Subscriber(IMU_TOPIC, Imu)
+		elif rospy.get_param(ns + "imu_version") == 2:
+			self.imu_sub = Subscriber(IMU_TOPIC_MK_II, Imu)
 
 		# Use point cloud for visualization
-		self.traj_pub = self.create_publisher(PointCloud2, "traj_dead_reck", 10)
+		self.traj_pub = rospy.Publisher(
+			"traj_dead_reck", PointCloud2, queue_size=10)
 
-		self.odom_pub = self.create_publisher(Odometry, LOCALIZATION_ODOM_TOPIC, 10)
+		self.odom_pub = rospy.Publisher(
+			LOCALIZATION_ODOM_TOPIC, Odometry, queue_size=10)
 
 		# are we using the FOG gyroscope?
-		self.use_gyro = self.get_parameter(ns + "use_gyro").value  # CHECK: declare_parameter needed first
+		self.use_gyro = rospy.get_param(ns + "use_gyro")
 
 		# define the callback, are we using the gyro or the VN100?
 		if self.use_gyro:
@@ -105,7 +96,7 @@ class DeadReckoningNode(Node):
 			self.ts = ApproximateTimeSynchronizer([self.imu_sub, self.dvl_sub], 200, .1)
 			self.ts.registerCallback(self.callback)
 
-		self.tf = TransformBroadcaster(self)
+		self.tf = tf.TransformBroadcaster()
 
 		loginfo("Localization node is initialized")
 
@@ -258,7 +249,7 @@ class DeadReckoningNode(Node):
 		if not self.keyframes:
 			new_keyframe = True
 		else:
-			duration = self.(prev_time.sec + prev_time.nanosec * 1e-9) - self.keyframes[-1][0]
+			duration = self.prev_time.to_sec() - self.keyframes[-1][0]
 			if duration > self.keyframe_duration:
 				odom = self.keyframes[-1][1].between(self.pose)
 				odom = g2n(odom)
@@ -272,7 +263,7 @@ class DeadReckoningNode(Node):
 					new_keyframe = True
 
 		if new_keyframe:
-			self.keyframes.append((self.(prev_time.sec + prev_time.nanosec * 1e-9), self.pose))
+			self.keyframes.append((self.prev_time.to_sec(), self.pose))
 		self.publish_pose(new_keyframe)
 
 

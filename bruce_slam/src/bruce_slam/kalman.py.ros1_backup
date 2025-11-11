@@ -1,26 +1,16 @@
-# NOTE: This file was auto-converted from ROS1 to ROS2
-# Manual review and testing required for:
-# - Parameter declarations (declare_parameter before get_parameter)
-# - Time conversions may need adjustment
-# - Transform broadcasting may need geometry_msgs imports
-# - Message filter callbacks may need adjustment
-
 #python imports
-import tf2_ros
-from tf2_ros import TransformBroadcaster
-import rclpy
-from rclpy.node import Node
+import tf
+import rospy
 import gtsam
 import numpy as np
-import rclpy
-from rclpy.node import Node
+import rospy
 from scipy.spatial.transform import Rotation
 
 
 # standard ros message imports
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu
-from tf_transformations import euler_from_quaternion
+from tf.transformations import euler_from_quaternion
 
 # import custom messages
 from rti_dvl.msg import DVL
@@ -32,7 +22,7 @@ from bruce_slam.utils.topics import *
 from bruce_slam.utils.conversions import *
 from bruce_slam.utils.io import *
 
-class KalmanNode(Node):
+class KalmanNode(object):
 	'''A class to support Kalman filtering using DVL, IMU, FOG and Depth readings.
 	'''
 
@@ -52,43 +42,43 @@ class KalmanNode(Node):
 			ns (str, optional): The namespace of the node. Defaults to "~".
 		"""
 
-		self.state_vector = self.get_parameter(ns + "state_vector").value  # CHECK: declare_parameter needed first
-		self.cov_matrix = self.get_parameter(ns + "cov_matrix").value  # CHECK: declare_parameter needed first
-		self.R_dvl = self.get_parameter(ns + "R_dvl").value  # CHECK: declare_parameter needed first
-		self.dt_dvl = self.get_parameter(ns + "dt_dvl").value  # CHECK: declare_parameter needed first
-		self.H_dvl = np.array(self.get_parameter(ns + "H_dvl").value  # CHECK: declare_parameter needed first)
-		self.R_imu = self.get_parameter(ns + "R_imu").value  # CHECK: declare_parameter needed first
-		self.dt_imu = self.get_parameter(ns + "dt_imu").value  # CHECK: declare_parameter needed first
-		self.H_imu = np.array(self.get_parameter(ns + "H_imu").value  # CHECK: declare_parameter needed first)
-		self.H_gyro = np.array(self.get_parameter(ns + "H_gyro").value  # CHECK: declare_parameter needed first)
-		self.R_gyro = self.get_parameter(ns + "R_gyro").value  # CHECK: declare_parameter needed first
-		self.dt_gyro = self.get_parameter(ns + "dt_gyro").value  # CHECK: declare_parameter needed first
-		self.H_depth = np.array(self.get_parameter(ns + "H_depth").value  # CHECK: declare_parameter needed first)
-		self.R_depth = self.get_parameter(ns + "R_depth").value  # CHECK: declare_parameter needed first
-		self.dt_depth = self.get_parameter(ns + "dt_depth").value  # CHECK: declare_parameter needed first
-		self.Q = self.get_parameter(ns + "Q").value  # CHECK: declare_parameter needed first # Process Noise Uncertainty
-		self.A_imu = self.get_parameter(ns + "A_imu").value  # CHECK: declare_parameter needed first # State Transition Matrix
-		x = self.get_parameter(ns + "offset/x").value  # CHECK: declare_parameter needed first # gyroscope offset matrix
-		y = self.get_parameter(ns + "offset/y").value  # CHECK: declare_parameter needed first
-		z = self.get_parameter(ns + "offset/z").value  # CHECK: declare_parameter needed first
+		self.state_vector = rospy.get_param(ns + "state_vector")
+		self.cov_matrix = rospy.get_param(ns + "cov_matrix")
+		self.R_dvl = rospy.get_param(ns + "R_dvl")
+		self.dt_dvl = rospy.get_param(ns + "dt_dvl")
+		self.H_dvl = np.array(rospy.get_param(ns + "H_dvl"))
+		self.R_imu = rospy.get_param(ns + "R_imu")
+		self.dt_imu = rospy.get_param(ns + "dt_imu")
+		self.H_imu = np.array(rospy.get_param(ns + "H_imu"))
+		self.H_gyro = np.array(rospy.get_param(ns + "H_gyro"))
+		self.R_gyro = rospy.get_param(ns + "R_gyro")
+		self.dt_gyro = rospy.get_param(ns + "dt_gyro")
+		self.H_depth = np.array(rospy.get_param(ns + "H_depth"))
+		self.R_depth = rospy.get_param(ns + "R_depth")
+		self.dt_depth = rospy.get_param(ns + "dt_depth")
+		self.Q = rospy.get_param(ns + "Q") # Process Noise Uncertainty
+		self.A_imu = rospy.get_param(ns + "A_imu") # State Transition Matrix
+		x = rospy.get_param(ns + "offset/x") # gyroscope offset matrix
+		y = rospy.get_param(ns + "offset/y")
+		z = rospy.get_param(ns + "offset/z")
 		self.offset_matrix = Rotation.from_euler("xyz",[x,y,z],degrees=True).as_matrix()
-		self.dvl_max_velocity = self.get_parameter(ns + "dvl_max_velocity").value  # CHECK: declare_parameter needed first
-		self.use_gyro = self.get_parameter(ns + "use_gyro").value  # CHECK: declare_parameter needed first
-		self.imu_offset = np.radians(self.get_parameter(ns + "imu_offset").value  # CHECK: declare_parameter needed first)
+		self.dvl_max_velocity = rospy.get_param(ns + "dvl_max_velocity")
+		self.use_gyro = rospy.get_param(ns + "use_gyro")
+		self.imu_offset = np.radians(rospy.get_param(ns + "imu_offset"))
 
 		# check which version of the imu we are using
-		if self.get_parameter(ns + "imu_version").value  # CHECK: declare_parameter needed first == 1:
+		if rospy.get_param(ns + "imu_version") == 1:
 			self.imu_sub = rospy.Subscriber(IMU_TOPIC, Imu,callback=self.imu_callback,queue_size=250)
-		elif self.get_parameter(ns + "imu_version").value  # CHECK: declare_parameter needed first == 2:
+		elif rospy.get_param(ns + "imu_version") == 2:
 			self.imu_sub = rospy.Subscriber(IMU_TOPIC_MK_II, Imu, callback=self.imu_callback,queue_size=250)
 
 		# define the other subcribers
 		self.dvl_sub = rospy.Subscriber(DVL_TOPIC,DVL,callback=self.dvl_callback,queue_size=250)
 		self.depth_sub = rospy.Subscriber(DEPTH_TOPIC, Depth,callback=self.pressure_callback,queue_size=250)
-		self.odom_pub_kalman = self.create_publisher(Odometry, LOCALIZATION_ODOM_TOPIC, 250)
+		self.odom_pub_kalman = rospy.Publisher(LOCALIZATION_ODOM_TOPIC, Odometry, queue_size=250)
 
 		# define the transfor broadcaster
-		self.tf1 = TransformBroadcaster(self)
+		self.tf1 = tf.TransformBroadcaster()
 
 		# if we are using the gyroscope set up the subscribers
 		if self.use_gyro:

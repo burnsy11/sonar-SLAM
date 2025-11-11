@@ -1,13 +1,5 @@
-# NOTE: This file was auto-converted from ROS1 to ROS2
-# Manual review and testing required for:
-# - Parameter declarations (declare_parameter before get_parameter)
-# - Time conversions may need adjustment
-# - Transform broadcasting may need geometry_msgs imports
-# - Message filter callbacks may need adjustment
-
 import numpy as np
-import rclpy
-from rclpy.node import Node
+import rospy
 from nav_msgs.msg import Odometry
 import gtsam
 from scipy.spatial.transform import Rotation
@@ -21,7 +13,7 @@ from bruce_slam.utils.io import *
 from std_msgs.msg import String, Float32
 
 
-class GyroFilter(Node):
+class GyroFilter(object):
 	'''A class to support dead reckoning using DVL and IMU readings
 	'''
 	def __init__(self):
@@ -36,15 +28,15 @@ class GyroFilter(Node):
 		"""
 
 		# define the rotation offset matrix for the gyro, this makes the gyro frame align with the sonar frame
-		x = self.get_parameter(ns + "offset/x").value  # CHECK: declare_parameter needed first
-		y = self.get_parameter(ns + "offset/y").value  # CHECK: declare_parameter needed first
-		z = self.get_parameter(ns + "offset/z").value  # CHECK: declare_parameter needed first
+		x = rospy.get_param(ns + "offset/x")
+		y = rospy.get_param(ns + "offset/y")
+		z = rospy.get_param(ns + "offset/z")
 		self.offset_matrix = Rotation.from_euler("xyz",[x,y,z],degrees=True).as_matrix()
 
 		# the speed the earth is rotating
-		self.latitude = np.radians(self.get_parameter(ns + "latitude").value  # CHECK: declare_parameter needed first)
+		self.latitude = np.radians(rospy.get_param(ns + "latitude"))
 		self.earth_rate = -15.04107 * np.sin(self.latitude) / 3600.0
-		self.sensor_rate = self.get_parameter(ns + "sensor_rate").value  # CHECK: declare_parameter needed first
+		self.sensor_rate = rospy.get_param(ns + "sensor_rate")
 
 		# define tf transformer and gyro sub
 		self.odom_pub = rospy.Publisher(GYRO_INTEGRATION_TOPIC, Odometry, queue_size=self.sensor_rate+50)

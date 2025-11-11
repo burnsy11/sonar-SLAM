@@ -1,17 +1,8 @@
-# NOTE: This file was auto-converted from ROS1 to ROS2
-# Manual review and testing required for:
-# - Parameter declarations (declare_parameter before get_parameter)
-# - Time conversions may need adjustment
-# - Transform broadcasting may need geometry_msgs imports
-# - Message filter callbacks may need adjustment
-
 # python imports
 import threading
-import tf2_ros
-from tf2_ros import TransformBroadcaster
-import rclpy
-from rclpy.node import Node
-from cv_bridge import CvBridge
+import tf
+import rospy
+import cv_bridge
 from nav_msgs.msg import Odometry
 from message_filters import  Subscriber
 from sensor_msgs.msg import PointCloud2
@@ -49,52 +40,52 @@ class SLAMNode(SLAM):
         """
 
         #keyframe paramters, how often to add them
-        self.keyframe_duration = self.get_parameter(ns + "keyframe_duration").value  # CHECK: declare_parameter needed first
-        self.keyframe_duration = rclpy.duration.Duration(seconds=self.keyframe_duration).to_msg()
-        self.keyframe_translation = self.get_parameter(ns + "keyframe_translation").value  # CHECK: declare_parameter needed first
-        self.keyframe_rotation = self.get_parameter(ns + "keyframe_rotation").value  # CHECK: declare_parameter needed first
+        self.keyframe_duration = rospy.get_param(ns + "keyframe_duration")
+        self.keyframe_duration = rospy.Duration(self.keyframe_duration)
+        self.keyframe_translation = rospy.get_param(ns + "keyframe_translation")
+        self.keyframe_rotation = rospy.get_param(ns + "keyframe_rotation")
 
         #SLAM paramter, are we using SLAM or just dead reckoning
-        self.enable_slam = self.get_parameter(ns + "enable_slam").value  # CHECK: declare_parameter needed first
+        self.enable_slam = rospy.get_param(ns + "enable_slam")
         print("SLAM STATUS: ", self.enable_slam)
 
         #noise models
-        self.prior_sigmas = self.get_parameter(ns + "prior_sigmas").value  # CHECK: declare_parameter needed first
-        self.odom_sigmas = self.get_parameter(ns + "odom_sigmas").value  # CHECK: declare_parameter needed first
-        self.icp_odom_sigmas = self.get_parameter(ns + "icp_odom_sigmas").value  # CHECK: declare_parameter needed first
+        self.prior_sigmas = rospy.get_param(ns + "prior_sigmas")
+        self.odom_sigmas = rospy.get_param(ns + "odom_sigmas")
+        self.icp_odom_sigmas = rospy.get_param(ns + "icp_odom_sigmas")
 
         #resultion for map downsampling
-        self.point_resolution = self.get_parameter(ns + "point_resolution").value  # CHECK: declare_parameter needed first
+        self.point_resolution = rospy.get_param(ns + "point_resolution")
 
         #sequential scan matching parameters (SSM)
-        self.ssm_params.enable = self.get_parameter(ns + "ssm/enable").value  # CHECK: declare_parameter needed first
-        self.ssm_params.min_points = self.get_parameter(ns + "ssm/min_points").value  # CHECK: declare_parameter needed first
-        self.ssm_params.max_translation = self.get_parameter(ns + "ssm/max_translation").value  # CHECK: declare_parameter needed first
-        self.ssm_params.max_rotation = self.get_parameter(ns + "ssm/max_rotation").value  # CHECK: declare_parameter needed first
-        self.ssm_params.target_frames = self.get_parameter(ns + "ssm/target_frames").value  # CHECK: declare_parameter needed first
+        self.ssm_params.enable = rospy.get_param(ns + "ssm/enable")
+        self.ssm_params.min_points = rospy.get_param(ns + "ssm/min_points")
+        self.ssm_params.max_translation = rospy.get_param(ns + "ssm/max_translation")
+        self.ssm_params.max_rotation = rospy.get_param(ns + "ssm/max_rotation")
+        self.ssm_params.target_frames = rospy.get_param(ns + "ssm/target_frames")
         print("SSM: ", self.ssm_params.enable)
 
         #non sequential scan matching parameters (NSSM) aka loop closures
-        self.nssm_params.enable = self.get_parameter(ns + "nssm/enable").value  # CHECK: declare_parameter needed first
-        self.nssm_params.min_st_sep = self.get_parameter(ns + "nssm/min_st_sep").value  # CHECK: declare_parameter needed first
-        self.nssm_params.min_points = self.get_parameter(ns + "nssm/min_points").value  # CHECK: declare_parameter needed first
-        self.nssm_params.max_translation = self.get_parameter(ns + "nssm/max_translation").value  # CHECK: declare_parameter needed first
-        self.nssm_params.max_rotation = self.get_parameter(ns + "nssm/max_rotation").value  # CHECK: declare_parameter needed first
-        self.nssm_params.source_frames = self.get_parameter(ns + "nssm/source_frames").value  # CHECK: declare_parameter needed first
-        self.nssm_params.cov_samples = self.get_parameter(ns + "nssm/cov_samples").value  # CHECK: declare_parameter needed first
+        self.nssm_params.enable = rospy.get_param(ns + "nssm/enable")
+        self.nssm_params.min_st_sep = rospy.get_param(ns + "nssm/min_st_sep")
+        self.nssm_params.min_points = rospy.get_param(ns + "nssm/min_points")
+        self.nssm_params.max_translation = rospy.get_param(ns + "nssm/max_translation")
+        self.nssm_params.max_rotation = rospy.get_param(ns + "nssm/max_rotation")
+        self.nssm_params.source_frames = rospy.get_param(ns + "nssm/source_frames")
+        self.nssm_params.cov_samples = rospy.get_param(ns + "nssm/cov_samples")
         print("NSSM: ", self.nssm_params.enable)
 
         #pairwise consistency maximization parameters for loop closure 
         #outliar rejection
-        self.pcm_queue_size = self.get_parameter(ns + "pcm_queue_size").value  # CHECK: declare_parameter needed first
-        self.min_pcm = self.get_parameter(ns + "min_pcm").value  # CHECK: declare_parameter needed first
+        self.pcm_queue_size = rospy.get_param(ns + "pcm_queue_size")
+        self.min_pcm = rospy.get_param(ns + "min_pcm")
 
         #mak delay between an incoming point cloud and dead reckoning
         self.feature_odom_sync_max_delay = 0.5
 
         #define the subsrcibing topics
         self.feature_sub = Subscriber(SONAR_FEATURE_TOPIC, PointCloud2)
-        self.odom_sub = Subscriber(self, LOCALIZATION_ODOM_TOPIC, Odometry)
+        self.odom_sub = Subscriber(LOCALIZATION_ODOM_TOPIC, Odometry)
 
         #define the sync policy
         self.time_sync = ApproximateTimeSynchronizer(
@@ -105,28 +96,32 @@ class SLAMNode(SLAM):
         self.time_sync.registerCallback(self.SLAM_callback)
 
         #pose publisher
-        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, SLAM_POSE_TOPIC, 10)
+        self.pose_pub = rospy.Publisher(
+            SLAM_POSE_TOPIC, PoseWithCovarianceStamped, queue_size=10)
 
         #dead reckoning topic
-        self.odom_pub = self.create_publisher(Odometry, SLAM_ODOM_TOPIC, 10)
+        self.odom_pub = rospy.Publisher(SLAM_ODOM_TOPIC, Odometry, queue_size=10)
 
         #SLAM trajectory topic
-        self.traj_pub = self.create_publisher(PointCloud2, SLAM_TRAJ_TOPIC, 1)
+        self.traj_pub = rospy.Publisher(
+            SLAM_TRAJ_TOPIC, PointCloud2, queue_size=1, latch=True)
 
         #constraints between poses
-        self.constraint_pub = self.create_publisher(Marker, SLAM_CONSTRAINT_TOPIC, 1)
+        self.constraint_pub = rospy.Publisher(
+            SLAM_CONSTRAINT_TOPIC, Marker, queue_size=1, latch=True)
 
         #point cloud publisher topic
-        self.cloud_pub = self.create_publisher(PointCloud2, SLAM_CLOUD_TOPIC, 1)
+        self.cloud_pub = rospy.Publisher(
+            SLAM_CLOUD_TOPIC, PointCloud2, queue_size=1, latch=True)
 
         #tf broadcaster to show pose
-        self.tf = TransformBroadcaster(self)
+        self.tf = tf.TransformBroadcaster()
 
         #cv bridge object
-        self.CVbridge = CvBridge()
+        self.CVbridge = cv_bridge.CvBridge()
 
         #get the ICP configuration from the yaml fukle
-        icp_config = self.get_parameter(ns + "icp_config").value  # CHECK: declare_parameter needed first
+        icp_config = rospy.get_param(ns + "icp_config")
         self.icp.loadFromYaml(icp_config)
         
         # define the robot ID this is not used here, extended in multi-robot SLAM
