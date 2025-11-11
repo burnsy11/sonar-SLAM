@@ -30,13 +30,15 @@ from bruce_slam import pcl
 from sonar_oculus.msg import OculusPing
 
 
-class SLAMNode(SLAM):
+class SLAMNode(Node, SLAM):
     """This class takes the functionality from slam.py and implments it in the ros
     environment. 
     """
     
-    def __init__(self):
-        super(SLAMNode, self).__init__()
+    def __init__(self, node_name='slam'):
+        Node.__init__(self, node_name)
+        SLAM.__init__(self)
+        set_global_logger(self.get_logger())
 
         # the threading lock
         self.lock = threading.RLock()

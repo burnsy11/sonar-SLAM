@@ -24,7 +24,10 @@ from std_msgs.msg import String, Float32
 class GyroFilter(Node):
 	'''A class to support dead reckoning using DVL and IMU readings
 	'''
-	def __init__(self):
+	def __init__(self, node_name="gyrofilter"):
+super().__init__(node_name)
+set_global_logger(self.get_logger())
+
 		# start the euler angles
 		self.roll, self.yaw, self.pitch = 90.,0.,0.
 

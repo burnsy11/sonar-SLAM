@@ -21,9 +21,11 @@ from bruce_slam.utils.io import *
 from bruce_slam.mapping import Mapping
 
 
-class MappingNode(Mapping):
-    def __init__(self):
-        super(MappingNode, self).__init__()
+class MappingNode(Node, Mapping):
+    def __init__(self, node_name='mapping'):
+        Node.__init__(self, node_name)
+        Mapping.__init__(self)
+        set_global_logger(self.get_logger())
 
         self.lock = threading.RLock()
         self.use_slam_traj = True

@@ -36,7 +36,10 @@ class KalmanNode(Node):
 	'''A class to support Kalman filtering using DVL, IMU, FOG and Depth readings.
 	'''
 
-	def __init__(self):
+	def __init__(self, node_name="kalman"):
+super().__init__(node_name)
+set_global_logger(self.get_logger())
+
 
 		#state vector = (x,y,z,roll, pitch, yaw, x_dot,y_dot,z_dot,roll_dot,pitch_dot,yaw_dot)
 		self.state_vector= np.array([[0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0]])

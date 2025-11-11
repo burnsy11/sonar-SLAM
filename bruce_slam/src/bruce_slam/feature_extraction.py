@@ -36,7 +36,10 @@ class FeatureExtraction(Node):
     subsribes to the sonar driver and publishes a point cloud
     '''
 
-    def __init__(self):
+    def __init__(self, node_name="featureextraction"):
+        super().__init__(node_name)
+        set_global_logger(self.get_logger())
+
         '''Class constructor, no args required all read from yaml file
         '''
 
