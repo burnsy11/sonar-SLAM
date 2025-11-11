@@ -17,12 +17,13 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(oculus_interfaces REQUIRED)
 
 # Generate interfaces
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ISAM2Update.msg"
-  "msg/keyframe_image.msg"
-  "msg/posehistory.msg"
+  "msg/KeyframeImage.msg"
+  "msg/PoseHistory.msg"
   "srv/QueryExplorationPath.srv"
   "srv/PredictSLAMUpdate.srv"
   "srv/GetOccupancyMap.srv"
@@ -31,6 +32,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     nav_msgs
     sensor_msgs
     std_msgs
+    oculus_interfaces
 )
 
 # Optional: Uncomment if/when GTSAM support is needed

@@ -1,4 +1,4 @@
 std_msgs/Header header
 int64 keyframe
-sonar_oculus/OculusPing img
+oculus_interfaces/OculusPing img
 sensor_msgs/PointCloud2 cloud

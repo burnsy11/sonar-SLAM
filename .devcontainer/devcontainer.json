@@ -1,0 +1,18 @@
+{
+    "name": "sonar-SLAM ROS2",
+    "dockerFile": "Dockerfile",
+    "context": "..",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.vscode-json",
+                "ms-python.python",
+                "ms-iot.vscode-ros"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/bin/python3"
+            }
+        }
+    },
+    "postCreateCommand": "echo 'Dev container ready'"
+}
