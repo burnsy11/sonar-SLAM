@@ -26,8 +26,8 @@ from bruce_slam.utils.visualization import *
 from bruce_slam.slam import SLAM, Keyframe
 from bruce_slam import pcl
 
-# Argonaut imports
-from sonar_oculus.msg import OculusPing
+# Sonar Oculus imports
+from oculus_interfaces.msg import OculusPing
 
 
 class SLAMNode(Node, SLAM):

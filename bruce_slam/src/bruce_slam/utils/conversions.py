@@ -225,7 +225,7 @@ def r2n(ros_msg:OculusPing) -> np.array:
         np.array: the image data in numpy array form
     """
 
-    if ros_msg._type == "sonar_oculus/OculusPing":
+    if ros_msg._type == "oculus_interfaces/OculusPing":
         
         img = r2n(ros_msg.ping)
         img = np.clip(

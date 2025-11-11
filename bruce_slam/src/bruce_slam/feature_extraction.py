@@ -21,7 +21,7 @@ from bruce_slam.utils.visualization import apply_custom_colormap
 #from bruce_slam.feature import FeatureExtraction
 from bruce_slam import pcl
 import matplotlib.pyplot as plt
-from sonar_oculus.msg import OculusPing, OculusPingUncompressed
+from oculus_interfaces.msg import OculusPing, OculusPingUncompressed
 from scipy.interpolate import interp1d
 
 from .utils import *
@@ -123,14 +123,13 @@ class FeatureExtraction(Node):
         #vis parameters
         self.radius = self.get_parameter(ns + "visualization/radius").value  # CHECK: declare_parameter needed first
         self.color = self.get_parameter(ns + "visualization/color").value  # CHECK: declare_parameter needed first
-
-        #sonar subsciber
-        if self.compressed_images:
-            self.sonar_sub = rospy.Subscriber(
-                SONAR_TOPIC, OculusPing, self.callback, queue_size=10)
-        else:
-            self.sonar_sub = rospy.Subscriber(
-                SONAR_TOPIC_UNCOMPRESSED, OculusPingUncompressed, self.callback, queue_size=10)
+            
+        self.sonar_sub = self.create_subscription(
+            OculusPing,
+            SONAR_TOPIC,
+            self.sonar_callback,
+            10
+        )
 
         #feature publish topic
         self.feature_pub = self.create_publisher(PointCloud2, SONAR_FEATURE_TOPIC, 10)
@@ -202,7 +201,7 @@ class FeatureExtraction(Node):
         self.feature_pub.publish(feature_msg)
 
     #@add_lock
-    def callback(self, sonar_msg):
+    def sonar_callback(self, sonar_msg):
         '''Feature extraction callback
         sonar_msg: an OculusPing messsage, in polar coordinates
         '''
