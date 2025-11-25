@@ -103,10 +103,10 @@ def plot_cov_ellipse(pos, cov, nstd=2, ax=None, **kwargs):
 
 def ros_colorline(xyz):
     fields = [
-        pc2.PointField("x", 0, pc2.PointField.FLOAT32, 1),
-        pc2.PointField("y", 4, pc2.PointField.FLOAT32, 1),
-        pc2.PointField("z", 8, pc2.PointField.FLOAT32, 1),
-        pc2.PointField("i", 12, pc2.PointField.FLOAT32, 1),
+        pc2.PointField(name='x', offset=0, datatype=pc2.PointField.FLOAT32, count=1),
+        pc2.PointField(name='y', offset=4, datatype=pc2.PointField.FLOAT32, count=1),
+        pc2.PointField(name='z', offset=8, datatype=pc2.PointField.FLOAT32, count=1),
+        pc2.PointField(name='i', offset=12, datatype=pc2.PointField.FLOAT32, count=1),
     ]
 
     xyzi = np.c_[xyz, np.array([[i] for i in range(len(xyz))])]
@@ -118,13 +118,13 @@ def ros_colorline(xyz):
 
 def ros_colorline_trajectory(traj):
     fields = [
-        pc2.PointField("x", 0, pc2.PointField.FLOAT32, 1),
-        pc2.PointField("y", 4, pc2.PointField.FLOAT32, 1),
-        pc2.PointField("z", 8, pc2.PointField.FLOAT32, 1),
-        pc2.PointField("roll", 12, pc2.PointField.FLOAT32, 1),
-        pc2.PointField("pitch", 16, pc2.PointField.FLOAT32, 1),
-        pc2.PointField("yaw", 20, pc2.PointField.FLOAT32, 1),
-        pc2.PointField("i", 24, pc2.PointField.FLOAT32, 1),
+        pc2.PointField(name='x', offset=0, datatype=pc2.PointField.FLOAT32, count=1),
+        pc2.PointField(name='y', offset=4, datatype=pc2.PointField.FLOAT32, count=1),
+        pc2.PointField(name='z', offset=8, datatype=pc2.PointField.FLOAT32, count=1),
+        pc2.PointField(name='roll', offset=12, datatype=pc2.PointField.FLOAT32, count=1),
+        pc2.PointField(name='pitch', offset=16, datatype=pc2.PointField.FLOAT32, count=1),
+        pc2.PointField(name='yaw', offset=20, datatype=pc2.PointField.FLOAT32, count=1),
+        pc2.PointField(name='i', offset=24, datatype=pc2.PointField.FLOAT32, count=1),
     ]
 
     traji = np.c_[traj, np.mgrid[0 : len(traj)]]
@@ -135,12 +135,12 @@ def ros_colorline_trajectory(traj):
 
 
 colors = {
-    "red": ColorRGBA(1.0, 0.0, 0.0, 1.0),
-    "blue": ColorRGBA(0.0, 0.0, 1.0, 1.0),
-    "green": ColorRGBA(0.0, 1.0, 0.0, 1.0),
-    "white": ColorRGBA(1.0,1.0,1.0,1.0),
-    "yellow": ColorRGBA(1.0,1.0,0.0,1.0),
-    "light_blue":ColorRGBA(.44,.62,.8118,1.0)
+    "red": ColorRGBA(r=1.0, g=0.0, b=0.0, a=1.0),
+    "blue": ColorRGBA(r=0.0, g=0.0, b=1.0, a=1.0),
+    "green": ColorRGBA(r=0.0, g=1.0, b=0.0, a=1.0),
+    "white": ColorRGBA(r=1.0, g=1.0, b=1.0, a=1.0),
+    "yellow": ColorRGBA(r=1.0, g=1.0, b=0.0, a=1.0),
+    "light_blue": ColorRGBA(r=0.44, g=0.62, b=0.8118, a=1.0),
 }
 
 

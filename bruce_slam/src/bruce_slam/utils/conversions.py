@@ -6,7 +6,7 @@ import cv2
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image, PointCloud2
 from sensor_msgs_py import point_cloud2 as pc2
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseStamped, Quaternion
 import struct
 
 
@@ -157,7 +157,8 @@ def r2g(ros_msg) -> gtsam.Pose3:
         gtsam.Pose3: the input data packaged as a gtsam 3D pose
     """
 
-    if ros_msg._type == "geometry_msgs/Pose":
+    # Use isinstance checks because ROS2 message objects don't have a `_type` attribute
+    if isinstance(ros_msg, Pose):
         x = ros_msg.position.x
         y = ros_msg.position.y
         z = ros_msg.position.z
@@ -168,9 +169,9 @@ def r2g(ros_msg) -> gtsam.Pose3:
         return gtsam.Pose3(
             n2g([qx, qy, qz, qw], "Quaternion"), n2g([x, y, z], "Point3")
         )
-    elif ros_msg._type == "geometry_msgs/PoseStamped":
+    elif isinstance(ros_msg, PoseStamped):
         return r2g(ros_msg.pose)
-    elif ros_msg._type == "geometry_msgs/Quaternion":
+    elif isinstance(ros_msg, Quaternion):
         return n2g([ros_msg.x, ros_msg.y, ros_msg.z, ros_msg.w], "Quaternion")
     else:
         raise NotImplementedError(
@@ -197,7 +198,11 @@ def g2r(gtsam_obj:gtsam.Pose3) -> Pose:
         pose_msg.position.x = pose.x()
         pose_msg.position.y = pose.y()
         pose_msg.position.z = pose.z()
-        qw, qx, qy, qz = pose.rotation().quaternion()
+        q = pose.rotation().toQuaternion()
+        qw = q.w()
+        qx = q.x()
+        qy = q.y()
+        qz = q.z()
         pose_msg.orientation.x = qx
         pose_msg.orientation.y = qy
         pose_msg.orientation.z = qz

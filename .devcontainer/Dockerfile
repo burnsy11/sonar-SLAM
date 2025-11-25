@@ -7,13 +7,12 @@ RUN apt-get update && apt-get install -y \
     libboost-system-dev \
     libboost-thread-dev \
     python3-pip \
+    ros-humble-mavros ros-humble-mavros-extras ros-humble-mavros-msgs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-# REMOVED conflicting ROS packages (rclpy, cv-bridge, etc.)
-# REMOVED packages already included (numpy, opencv, etc.)
-# Kept only the non-ROS, non-default packages.
 RUN pip3 install \
+    "numpy<1.25.0" \
     gtsam \
     matplotlib \
     scikit-learn \
@@ -27,6 +26,7 @@ WORKDIR /ros2_ws
 # Clone the repo into the 'src' folder
 RUN git clone https://github.com/ENSTABretagneRobotics/oculus_ros2.git src/oculus_ros2
 RUN git clone https://github.com/ENSTABretagneRobotics/oculus_driver.git src/oculus_driver
+RUN git clone https://github.com/paagutie/dvl_msgs.git src/dvl_msgs
 
 # Source the ROS environment and build the workspace
 RUN source /opt/ros/humble/setup.bash && colcon build

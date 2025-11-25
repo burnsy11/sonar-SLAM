@@ -46,28 +46,28 @@ class FeatureExtraction(Node):
         #oculus info
         self.oculus = OculusProperty()
 
-        #default parameters for CFAR
+        # default parameters for CFAR (defaults mirror config/feature.yaml)
         self.Ntc = 40
         self.Ngc = 10
-        self.Pfa = 1e-2
-        self.rank = None
+        self.Pfa = 0.1
+        self.rank = 10
         self.alg = "SOCA"
         self.detector = None
-        self.threshold = 0
+        self.threshold = 65
         self.cimg = None
 
-        #default parameters for point cloud 
+        # default parameters for point cloud / filtering
         self.colormap = "RdBu_r"
         self.pub_rect = True
         self.resolution = 0.5
         self.outlier_filter_radius = 1.0
         self.outlier_filter_min_points = 5
-        self.skip = 5
+        self.skip = 1
 
         # for offline visualization
         self.feature_img = None
 
-        #for remapping from polar to cartisian
+        # for remapping from polar to cartisian
         self.res = None
         self.height = None
         self.rows = None
@@ -80,64 +80,77 @@ class FeatureExtraction(Node):
         self.REVERSE_Z = 1
         self.maxRange = None
 
-        #which vehicle is being used
-        self.compressed_images = True
+        # which vehicle is being used
+        self.compressed_images = False
 
         # place holder for the multi-robot system
         self.rov_id = ""
 
-    def configure(self):
-        '''Calls the CFAR class constructor for the featureExtraction class
-        '''
-        self.detector = CFAR(self.Ntc, self.Ngc, self.Pfa, self.rank)
+        # --- declare parameters (dot notation) with defaults from feature.yaml ---
+        # CFAR
+        self.declare_parameter('CFAR.Ntc', 40)
+        self.declare_parameter('CFAR.Ngc', 10)
+        self.declare_parameter('CFAR.Pfa', 0.1)
+        self.declare_parameter('CFAR.rank', 10)
+        self.declare_parameter('CFAR.alg', 'SOCA')
 
-    def init_node(self, ns="~"):
+        # filter
+        self.declare_parameter('filter.threshold', 65)
+        self.declare_parameter('filter.resolution', 0.5)
+        self.declare_parameter('filter.radius', 1.0)
+        self.declare_parameter('filter.min_points', 5)
+        self.declare_parameter('filter.skip', 1)
 
-        #read in CFAR parameters
-        self.Ntc = self.get_parameter(ns + "CFAR/Ntc").value  # CHECK: declare_parameter needed first
-        self.Ngc = self.get_parameter(ns + "CFAR/Ngc").value  # CHECK: declare_parameter needed first
-        self.Pfa = self.get_parameter(ns + "CFAR/Pfa").value  # CHECK: declare_parameter needed first
-        self.rank = self.get_parameter(ns + "CFAR/rank").value  # CHECK: declare_parameter needed first
-        self.alg = self.get_parameter(ns + "CFAR/alg", "SOCA").value  # CHECK: declare_parameter needed first
-        self.threshold = self.get_parameter(ns + "filter/threshold").value  # CHECK: declare_parameter needed first
+        # visualization
+        self.declare_parameter('visualization.coordinates', 'cartesian')
+        self.declare_parameter('visualization.radius', 2)
+        self.declare_parameter('visualization.color', [0, 165, 255])
 
-        #read in PCL downsampling parameters
-        self.resolution = self.get_parameter(ns + "filter/resolution").value  # CHECK: declare_parameter needed first
-        self.outlier_filter_radius = self.get_parameter(ns + "filter/radius").value  # CHECK: declare_parameter needed first
-        self.outlier_filter_min_points = self.get_parameter(ns + "filter/min_points").value  # CHECK: declare_parameter needed first
+        # other
+        self.declare_parameter('compressed_images', False)
 
-        #parameter to decide how often to skip a frame
-        self.skip = self.get_parameter(ns + "filter/skip").value  # CHECK: declare_parameter needed first
+        # --- read parameters into instance variables ---
+        self.Ntc = self.get_parameter('CFAR.Ntc').value
+        self.Ngc = self.get_parameter('CFAR.Ngc').value
+        self.Pfa = self.get_parameter('CFAR.Pfa').value
+        self.rank = self.get_parameter('CFAR.rank').value
+        self.alg = self.get_parameter('CFAR.alg').value
 
-        #are the incoming images compressed?
-        self.compressed_images = self.get_parameter(ns + "compressed_images").value  # CHECK: declare_parameter needed first
+        self.threshold = self.get_parameter('filter.threshold').value
+        self.resolution = self.get_parameter('filter.resolution').value
+        self.outlier_filter_radius = self.get_parameter('filter.radius').value
+        self.outlier_filter_min_points = self.get_parameter('filter.min_points').value
+        self.skip = self.get_parameter('filter.skip').value
 
-        #cv bridge
+        self.coordinates = self.get_parameter('visualization.coordinates').value
+        self.radius = self.get_parameter('visualization.radius').value
+        self.color = self.get_parameter('visualization.color').value
+
+        self.compressed_images = self.get_parameter('compressed_images').value
+
+        # cv bridge
         self.BridgeInstance = CvBridge()
-        
-        #read in the format
-        self.coordinates = self.get_parameter(
-            ns + "visualization/coordinates", "cartesian"
-        ).value  # CHECK: declare_parameter needed first
 
-        #vis parameters
-        self.radius = self.get_parameter(ns + "visualization/radius").value  # CHECK: declare_parameter needed first
-        self.color = self.get_parameter(ns + "visualization/color").value  # CHECK: declare_parameter needed first
-            
+        # sonar subscription and feature publishers
         self.sonar_sub = self.create_subscription(
             Ping,
             SONAR_TOPIC,
             self.sonar_callback,
-            10
+            10,
         )
 
-        #feature publish topic
+        # feature publish topic
         self.feature_pub = self.create_publisher(PointCloud2, SONAR_FEATURE_TOPIC, 10)
 
-        #vis publish topic
+        # vis publish topic
         self.feature_img_pub = self.create_publisher(Image, SONAR_FEATURE_IMG_TOPIC, 10)
 
-        self.configure()
+        # finalize detector
+        
+        # Log CFAR parameters
+        self.get_logger().info(f"CFAR Parameters: Ntc={self.Ntc}, Ngc={self.Ngc}, Pfa={self.Pfa}, rank={self.rank}")
+
+        self.detector = CFAR(self.Ntc, self.Ngc, self.Pfa, self.rank)
 
     def generate_map_xy(self, ping):
         '''Generate a mesh grid map for the sonar image, this enables converison to cartisian from the 
@@ -250,13 +263,40 @@ class FeatureExtraction(Node):
         peaks = self.detector.detect(img, self.alg)
         peaks &= img > self.threshold
 
+        # 1. Remap the intensity image (grayscale)
         vis_img = cv2.remap(img, self.map_x, self.map_y, cv2.INTER_LINEAR)
-        vis_img = cv2.applyColorMap(vis_img, 2)
-        self.feature_img_pub.publish(ros_numpy.image.numpy_to_image(vis_img, "bgr8"))
+
+        # 2. Convert to BGR for overlay
+        vis_img = cv2.cvtColor(vis_img, cv2.COLOR_GRAY2BGR)
+
+        # 3. Remap the binary peaks (USE INTER_NEAREST)
+        cartesian_peaks = cv2.remap(peaks.astype(np.uint8), self.map_x, self.map_y, cv2.INTER_NEAREST)
+
+        # 4. OVERLAY: Set all detected pixels to bright red
+        vis_img[cartesian_peaks != 0] = [0, 0, 255]  # Bright Red
+
+        # 5. Publish the combined image (background remains grayscale)
+        img_msg = self.BridgeInstance.cv2_to_imgmsg(vis_img, encoding="bgr8")
+        img_msg.header.stamp = sonar_msg.header.stamp
+        img_msg.header.frame_id = "base_link"
+        self.feature_img_pub.publish(img_msg)
+
+        # 6. Now, use the `cartesian_peaks` you already calculated
+        locs = np.c_[np.nonzero(cartesian_peaks)]
+
+
+
+
+        # vis_img = cv2.remap(img, self.map_x, self.map_y, cv2.INTER_LINEAR)
+        # vis_img = cv2.applyColorMap(vis_img, 2)
+        # img_msg = self.BridgeInstance.cv2_to_imgmsg(vis_img, encoding="bgr8")
+        # img_msg.header.stamp = sonar_msg.header.stamp
+        # img_msg.header.frame_id = "base_link"
+        # self.feature_img_pub.publish(img_msg)
 
         #convert to cartisian
-        peaks = cv2.remap(peaks, self.map_x, self.map_y, cv2.INTER_LINEAR)        
-        locs = np.c_[np.nonzero(peaks)]
+        # peaks = cv2.remap(peaks, self.map_x, self.map_y, cv2.INTER_LINEAR)        
+        # locs = np.c_[np.nonzero(peaks)]
 
         #convert from image coords to meters
         x = locs[:,1] - self.cols / 2.
@@ -264,16 +304,16 @@ class FeatureExtraction(Node):
         y = (-1*(locs[:,0] / float(self.rows)) * self.height) + self.height
         points = np.column_stack((y,x))
 
-        #filter the cloud using PCL
-        if len(points) and self.resolution > 0:
-            points = pcl.downsample(points, self.resolution)
+        # #filter the cloud using PCL
+        # if len(points) and self.resolution > 0:
+        #     points = pcl.downsample(points, self.resolution)
 
-        #remove some outliars
-        if self.outlier_filter_min_points > 1 and len(points) > 0:
-            # points = pcl.density_filter(points, 5, self.min_density, 1000)
-            points = pcl.remove_outlier(
-                points, self.outlier_filter_radius, self.outlier_filter_min_points
-            )
+        # #remove some outliars
+        # if self.outlier_filter_min_points > 1 and len(points) > 0:
+        #     # points = pcl.density_filter(points, 5, self.min_density, 1000)
+        #     points = pcl.remove_outlier(
+        #         points, self.outlier_filter_radius, self.outlier_filter_min_points
+        #     )
 
         #publish the feature message
         self.publish_features(sonar_msg, points)

@@ -23,6 +23,8 @@ find_package(tf2_ros REQUIRED)
 find_package(bruce_msgs REQUIRED)
 find_package(libpointmatcher REQUIRED)
 find_package(PCL REQUIRED)
+
+find_package(Python3 REQUIRED COMPONENTS Development)
 find_package(pybind11_vendor REQUIRED)
 find_package(pybind11 REQUIRED)
 

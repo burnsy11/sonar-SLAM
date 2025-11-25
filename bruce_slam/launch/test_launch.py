@@ -78,29 +78,27 @@ def generate_launch_description():
             PushRosNamespace('bruce'),
             PushRosNamespace('slam'),
             
-            # Gyro fusion node (if not using Kalman)
-            Node(
-                condition=UnlessCondition(LaunchConfiguration('kalman_dead_reckoning')),
-                package='bruce_slam',
-                executable='gyro_node.py',
-                name='gyro_fusion',
-                output='screen',
-                parameters=[gyro_config]
-            ),
+            # # Gyro fusion node (if not using Kalman)
+            # Node(
+            #     condition=UnlessCondition(LaunchConfiguration('kalman_dead_reckoning')),
+            #     package='bruce_slam',
+            #     executable='gyro_node.py',
+            #     name='gyro_fusion',
+            #     output='screen',
+            #     parameters=[gyro_config]
+            # ),
             
-            # Dead reckoning node (if not using Kalman)
-            Node(
-                condition=UnlessCondition(LaunchConfiguration('kalman_dead_reckoning')),
-                package='bruce_slam',
-                executable='dead_reckoning_node.py',
-                name='dead_reckoning',
-                output='screen',
-                parameters=[dead_reckoning_config]
-            ),
+            # # Dead reckoning node (if not using Kalman)
+            # Node(
+            #     condition=UnlessCondition(LaunchConfiguration('kalman_dead_reckoning')),
+            #     package='bruce_slam',
+            #     executable='dead_reckoning_node.py',
+            #     name='dead_reckoning',
+            #     output='screen',
+            # ),
             
-            # Kalman filter node (if using Kalman)
+            # # Kalman filter node (if using Kalman)
             Node(
-                condition=IfCondition(LaunchConfiguration('kalman_dead_reckoning')),
                 package='bruce_slam',
                 executable='kalman_node.py',
                 name='kalman',
@@ -116,18 +114,18 @@ def generate_launch_description():
                 parameters=[feature_config]
             ),
             
-            # SLAM node
-            Node(
-                package='bruce_slam',
-                executable='slam_node.py',
-                name='slam',
-                output='screen',
-                parameters=[
-                    slam_config,
-                    {'enable_slam': LaunchConfiguration('enable_slam')},
-                    {'save_fig': False}
-                ]
-            ),
+            # # SLAM node
+            # Node(
+            #     package='bruce_slam',
+            #     executable='slam_node.py',
+            #     name='slam',
+            #     output='screen',
+            #     parameters=[
+            #         slam_config,
+            #         {'enable_slam': LaunchConfiguration('enable_slam')},
+            #         {'save_fig': False}
+            #     ]
+            # ),
         ]
     )
     
@@ -165,5 +163,5 @@ def generate_launch_description():
         kill_arg,
         online_nodes,
         map_to_world_tf,
-        rviz_node,
+        # rviz_node,
     ])

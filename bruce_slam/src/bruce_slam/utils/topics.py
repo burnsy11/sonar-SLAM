@@ -1,17 +1,17 @@
-from rti_dvl.msg import DVL
+# from rti_dvl.msg import DVL # FIXEME: this needs to be changed to ours
 from sensor_msgs.msg import Imu
-from bar30_depth.msg import Depth
+# from bar30_depth.msg import Depth # FIXEME: this needs to be changed to ours
 from oculus_interfaces.msg import Ping
 
 
 """
 Topics for the bruce_slam project
 """
-IMU_TOPIC = "/vn100/imu/raw"
+IMU_TOPIC = "/zed/zed_node/imu/data"
 IMU_TOPIC_MK_II = "/vectornav/IMU"
-DVL_TOPIC = "/rti/body_velocity/raw"
+DVL_TOPIC = "/dvl/data"
 DEPTH_TOPIC = "/bar30/depth/raw"
-SONAR_TOPIC = "/sonar_oculus_node/M750d/ping"
+SONAR_TOPIC = "/sonar/ping"
 SONAR_TOPIC_UNCOMPRESSED = "/sonar_oculus_node/ping"
 SONAR_VERTICAL_TOPIC = "/sonar_oculus_node/M1200d/ping"
 GYRO_TOPIC = "/gyro"

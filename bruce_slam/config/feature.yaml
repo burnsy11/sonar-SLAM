@@ -1,24 +1,50 @@
-# Constant false alarm rate (CFAR) params for feature extraction
-CFAR:
-  Ntc: 40 # number of training cells
-  Ngc: 10 # number of guard cells
-  Pfa: 0.1 #false alarm rate
-  rank: 10 # matrix rank
-  alg: 'SOCA' # method of CFAR, see cfar.cpp for options. SOCA is best.
+# Provide parameters for both the fully-qualified node name (namespace + node)
+# and the bare node name. When ROS2 is launched with --params-file the
+# parser expects node-name keys; otherwise some launchers can accept
+# top-level `ros__parameters`.
 
-# point cloud filtering params
-filter:
-  threshold: 65 # the min CFAR response to be added to the point cloud
-  resolution: 0.5 # voxel downsampling res
-  radius: 1.0 # outlier rejection radius
-  min_points: 5 # outlier rejection min points
-  skip: 1 # how often to skip a point cloud, use 1
+"/bruce/slam/feature_extraction":
+  ros__parameters:
+    CFAR:
+      Ntc: 20          # number of training cells
+      Ngc: 20          # number of guard cells
+      Pfa: 0.05       # false alarm rate
+      rank: 10         # matrix rank
+      alg: 'SOCA'      # CFAR method
 
-# the vis params
-visualization:
-  coordinates: 'cartesian'
-  radius: 2
-  color: [0, 165, 255]
+    filter:
+      threshold: 65    # min CFAR response
+      resolution: 0.25  # voxel size
+      radius: 0.8      # outlier radius
+      min_points: 15    # outlier min points
+      skip: 1          # frame skip
 
-# are we using compressed imagary
-compressed_images: False
+    visualization:
+      coordinates: 'cartesian'
+      radius: 2
+      color: [0, 165, 255]
+
+    compressed_images: false
+
+feature_extraction:
+  ros__parameters:
+    CFAR:
+      Ntc: 40          # number of training cells
+      Ngc: 10          # number of guard cells
+      Pfa: 0.001       # false alarm rate
+      rank: 10         # matrix rank
+      alg: 'SOCA'      # CFAR method
+
+    filter:
+      threshold: 65    # min CFAR response
+      resolution: 0.5  # voxel size
+      radius: 1.0      # outlier radius
+      min_points: 5    # outlier min points
+      skip: 1          # frame skip
+
+    visualization:
+      coordinates: 'cartesian'
+      radius: 2
+      color: [0, 165, 255]
+
+    compressed_images: false

@@ -89,9 +89,8 @@ Configuration files remain in `config/` directory:
 - `feature.yaml`
 - `gyro.yaml`
 - `slam.yaml`
-- `kalman.yaml`
 
-Parameter names and structure are unchanged from ROS1.
+The Kalman node now declares all parameters internally, so no dedicated `kalman.yaml` file is required.
 
 ## Dependencies
 

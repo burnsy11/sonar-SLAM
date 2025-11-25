@@ -8,20 +8,13 @@ if __name__ == "__main__":
 
     #call class constructor
     node = FeatureExtraction('feature_extraction')
-    node.init_node()
 
     #get args
     parser = common_parser()
     args, _ = parser.parse_known_args()
 
-    #log and spin
-    if not args.file:
-        loginfo("Start online sonar feature extraction...")
-        rclpy.spin(node)
-        node.destroy_node()
-        rclpy.shutdown()
-    else:
-        loginfo("Start offline sonar feature extraction...")
-        offline(args)
-        node.destroy_node()
-        rclpy.shutdown()
+    # spin the node to handle callbacks
+    rclpy.spin(node)
+
+    node.destroy_node()
+    rclpy.shutdown()
