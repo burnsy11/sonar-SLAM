@@ -22,7 +22,6 @@ from message_filters import ApproximateTimeSynchronizer, Cache, Subscriber
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 # import custom messages
-# from kvh_gyro.msg import gyro as GyroMsg
 from dvl_msgs.msg import DVL
 # from bar30_depth.msg import Depth
 
@@ -116,22 +115,21 @@ class DeadReckoningNode(Node):
             ns (str, optional): The namespace of the node. Defaults to "~".
         """
         # Parameters for Node (declare defaults to support running without external declarations)
-        self.declare_parameter(ns + "imu_pose", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        self.declare_parameter(ns + "dvl_max_velocity", 0.5)
-        self.declare_parameter(ns + "keyframe_duration", 0.25)
-        self.declare_parameter(ns + "keyframe_translation", 0.2)
-        self.declare_parameter(ns + "keyframe_rotation", 0.01)
-        self.declare_parameter(ns + "use_gyro", False)
-        self.declare_parameter(ns + "imu_version", 1)
+        self.declare_parameter("imu_pose", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.declare_parameter("dvl_max_velocity", 0.5)
+        self.declare_parameter("keyframe_duration", 0.25)
+        self.declare_parameter("keyframe_translation", 0.2)
+        self.declare_parameter("keyframe_rotation", 0.01)
+        self.declare_parameter("imu_version", 1)
 
         # Get parameters
-        self.imu_pose = self.get_parameter(ns + "imu_pose").value
+        self.imu_pose = self.get_parameter("imu_pose").value
         self.imu_pose = n2g(self.imu_pose, "Pose3")
         self.imu_rot = self.imu_pose.rotation()
-        self.dvl_max_velocity = self.get_parameter(ns + "dvl_max_velocity").value  # CHECK: declare_parameter needed first
-        self.keyframe_duration = self.get_parameter(ns + "keyframe_duration").value  # CHECK: declare_parameter needed first
-        self.keyframe_translation = self.get_parameter(ns + "keyframe_translation").value  # CHECK: declare_parameter needed first
-        self.keyframe_rotation = self.get_parameter(ns + "keyframe_rotation").value  # CHECK: declare_parameter needed first
+        self.dvl_max_velocity = self.get_parameter("dvl_max_velocity").value
+        self.keyframe_duration = self.get_parameter("keyframe_duration").value
+        self.keyframe_translation = self.get_parameter("keyframe_translation").value
+        self.keyframe_rotation = self.get_parameter("keyframe_rotation").value
 
         # Subscribers and caches
         # Build QoS profiles that match the publishers we expect
@@ -145,12 +143,11 @@ class DeadReckoningNode(Node):
         # For ROS2 message_filters, the Subscriber signature expects (node, msg_type, topic)
         # Prefer parameters that can override topic names; keep compatibility with testing bag topics
         self.dvl_sub = Subscriber(self, DVL, "/dvl/data", qos_profile=dvl_qos)
-        # self.gyro_sub = Subscriber(self, GYRO_INTEGRATION_TOPIC, Odometry)
         # self.depth_sub = Subscriber(self, DEPTH_TOPIC, Depth)
         # self.depth_cache = Cache(self.depth_sub, 1)
 
         # select IMU topic based on version param or the testing ZED topic
-        imu_version = self.get_parameter(ns + "imu_version").value
+        imu_version = self.get_parameter("imu_version").value
         if imu_version == 2:
             self.imu_sub = Subscriber(self, Imu, IMU_TOPIC_MK_II, qos_profile=imu_qos)
         else:
@@ -165,18 +162,9 @@ class DeadReckoningNode(Node):
 
         self.odom_pub = self.create_publisher(Odometry, LOCALIZATION_ODOM_TOPIC, 10)
 
-        # are we using the FOG gyroscope?
-        # self.use_gyro = self.get_parameter(ns + "use_gyro").value  # CHECK: declare_parameter needed first
-        self.use_gyro = False
-
-        # define the callback, are we using the gyro or the VN100?
-        if self.use_gyro:
-            # self.ts = ApproximateTimeSynchronizer([self.imu_sub, self.dvl_sub, self.gyro_sub], 300, .1)
-            # self.ts.registerCallback(self.callback_with_gyro)
-            pass
-        else:
-            self.ts = ApproximateTimeSynchronizer([self.imu_sub, self.dvl_sub], 200, .1)
-            self.ts.registerCallback(self.callback)
+        # define the message synchronizer (IMU + DVL)
+        self.ts = ApproximateTimeSynchronizer([self.imu_sub, self.dvl_sub], 200, .1)
+        self.ts.registerCallback(self.callback)
 
         self.tf = TransformBroadcaster(self)
 
@@ -212,10 +200,7 @@ class DeadReckoningNode(Node):
             self.imu_yaw0 = rot.yaw()
 
         # Get a rotation matrix
-        # if use_gyro has the same value in Kalman and DeadReck, use this line
         rot = gtsam.Rot3.Ypr(rot.yaw()-self.imu_yaw0, rot.pitch(), np.radians(90)+rot.roll())
-        # if use_gyro = True in Kalman and use_gyro = False in DeadReck, use this line:
-        # rot = gtsam.Rot3.Ypr(rot.yaw()-self.imu_yaw0, rot.pitch(), np.radians(90)+rot.roll())
 
         # parse the DVL message into an array of velocites
         vel = np.array([dvl_msg.velocity.x, dvl_msg.velocity.y, dvl_msg.velocity.z])
@@ -224,44 +209,7 @@ class DeadReckoningNode(Node):
         self.send_odometry(vel,rot,dvl_msg.header.stamp,depth)
 
 
-    # def callback_with_gyro(self, imu_msg:Imu, dvl_msg:DVL, gyro_msg:GyroMsg)->None:
-    #     """Handle the dead reckoning state estimate using the fiber optic gyro. Here we use the
-    #     Gyro as a means of getting the yaw estimate, roll and pitch are still VN100.
 
-    #     Args:
-    #         imu_msg (Imu): the vn100 imu message
-    #         dvl_msg (DVL): the DVL message
-    #         gyro_msg (GyroMsg): the euler angles from the gyro
-    #     """
-    #     # decode the gyro message
-    #     gyro_yaw = r2g(gyro_msg.pose.pose).rotation().yaw()
-
-    #     #get the previous depth message
-    #     depth_msg = self.depth_cache.getLast()
-
-    #     #if there is no depth message, then skip this time step
-    #     if depth_msg is None:
-    #         return
-
-    #     #check the delay between the depth message and the DVL
-    #     dd_delay = (depth_msg.header.stamp - dvl_msg.header.stamp).to_sec()
-    #     #print(dd_delay)
-    #     if abs(dd_delay) > 1.0:
-    #         logdebug("Missing depth message for {}".format(dd_delay))
-
-    #     #convert the imu message from msg to gtsam rotation object
-    #     rot = r2g(imu_msg.orientation)
-    #     rot = rot.compose(self.imu_rot.inverse())
-
-
-    #     # Get a rotation matrix
-    #     rot = gtsam.Rot3.Ypr(gyro_yaw, rot.pitch(), rot.roll())
-
-    #     #parse the DVL message into an array of velocites
-    #     vel = np.array([dvl_msg.velocity.x, dvl_msg.velocity.y, dvl_msg.velocity.z])
-
-    #     # package the odom message and publish it
-    #     self.send_odometry(vel,rot,dvl_msg.header.stamp,depth_msg.depth)
 
 
     def send_odometry(self,vel:np.array,rot:gtsam.Rot3,dvl_time_msg,depth:float)->None:

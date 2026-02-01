@@ -8,3 +8,6 @@ build/
 install/
 log/
 *.egg-info/*.ros1_backup
+
+testing_data/
+custom_message/

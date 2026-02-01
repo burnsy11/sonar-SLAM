@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y \
     libboost-system-dev \
     libboost-thread-dev \
     python3-pip \
+    python3-tk \
+    x11-apps \
     ros-humble-mavros ros-humble-mavros-extras ros-humble-mavros-msgs \
     && rm -rf /var/lib/apt/lists/*
 

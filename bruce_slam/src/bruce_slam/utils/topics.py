@@ -7,18 +7,17 @@ from oculus_interfaces.msg import Ping
 """
 Topics for the bruce_slam project
 """
-IMU_TOPIC = "/zed/zed_node/imu/data"
+IMU_TOPIC = "/oceansim/robot/imu"
 IMU_TOPIC_MK_II = "/vectornav/IMU"
 DVL_TOPIC = "/dvl/data"
 DEPTH_TOPIC = "/bar30/depth/raw"
 SONAR_TOPIC = "/sonar/ping"
 SONAR_TOPIC_UNCOMPRESSED = "/sonar_oculus_node/ping"
 SONAR_VERTICAL_TOPIC = "/sonar_oculus_node/M1200d/ping"
-GYRO_TOPIC = "/gyro"
 
 
 SLAM_NS = "/bruce/slam/"
-GYRO_INTEGRATION_TOPIC = SLAM_NS + "gyro_integrated"
+
 SONAR_FUSION_TOPIC = SLAM_NS + "sonar_fusion"
 LOCALIZATION_ODOM_TOPIC = SLAM_NS + "localization/odom"
 LOCALIZATION_TRAJ_TOPIC = SLAM_NS + "localization/traj"

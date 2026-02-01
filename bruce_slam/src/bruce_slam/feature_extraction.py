@@ -79,6 +79,10 @@ class FeatureExtraction(Node):
         self.to_rad = lambda bearing: bearing * np.pi / 18000
         self.REVERSE_Z = 1
         self.maxRange = None
+        # Store bearing range for coordinate conversion
+        self.bearing_min = None
+        self.bearing_max = None
+        self.bearing_center = None
 
         # which vehicle is being used
         self.compressed_images = False
@@ -166,7 +170,15 @@ class FeatureExtraction(Node):
         # Convert bearings from 100th of degree to radians
         bearings_deg = np.array(ping.bearings) * 0.01
         bearings_rad = bearings_deg * np.pi / 180.0
-        _width = np.sin((bearings_rad[-1] - bearings_rad[0]) / 2) * _height * 2
+        
+        # Store bearing range for coordinate conversion
+        self.bearing_min = bearings_rad[0]
+        self.bearing_max = bearings_rad[-1]
+        self.bearing_center = (self.bearing_min + self.bearing_max) / 2.0
+        bearing_span = self.bearing_max - self.bearing_min
+        
+        # Calculate width based on actual bearing span
+        _width = np.sin(bearing_span / 2) * _height * 2
         _cols = int(np.ceil(_width / _res))
 
         #check if the parameters have changed
@@ -188,13 +200,16 @@ class FeatureExtraction(Node):
             fill_value=-1,
             assume_sorted=True)
 
-        #build the meshgrid
+        #build the meshgrid - account for bearing center offset
         XX, YY = np.meshgrid(range(self.cols), range(self.rows))
-        x = self.res * (self.rows - YY)
+        # Range increases going up (row 0 = max range)
+        r = self.res * (self.rows - YY)
+        # Lateral position: map columns to bearing range centered on bearing_center
         y = self.res * (-self.cols / 2.0 + XX + 0.5)
-        b = np.arctan2(y, x) * self.REVERSE_Z
-        r = np.sqrt(np.square(x) + np.square(y))
-        self.map_y = np.asarray(r / self.res, dtype=np.float32)
+        # Compute bearing for each pixel, offset by the center bearing
+        b = np.arctan2(y, r) * self.REVERSE_Z + self.bearing_center
+        
+        self.map_y = np.asarray(np.sqrt(r**2 + y**2) / self.res, dtype=np.float32)
         self.map_x = np.asarray(f_bearings(b), dtype=np.float32)
 
     def publish_features(self, ping, points):
@@ -203,8 +218,9 @@ class FeatureExtraction(Node):
         points: points to be converted to a ros point cloud, in cartisian meters
         '''
 
-        #shift the axis
-        points = np.c_[points[:,0],np.zeros(len(points)),  points[:,1]]
+        # Map to ROS convention: x = forward, y = lateral, z = up
+        # Sonar is an in-plane sensor, so we place points in the X-Y plane (z = 0)
+        points = np.c_[points[:,0], points[:,1], np.zeros(len(points))]
 
         #convert to a pointcloud
         feature_msg = n2r(points, "PointCloudXYZ")
@@ -284,25 +300,24 @@ class FeatureExtraction(Node):
         # 6. Now, use the `cartesian_peaks` you already calculated
         locs = np.c_[np.nonzero(cartesian_peaks)]
 
-
-
-
-        # vis_img = cv2.remap(img, self.map_x, self.map_y, cv2.INTER_LINEAR)
-        # vis_img = cv2.applyColorMap(vis_img, 2)
-        # img_msg = self.BridgeInstance.cv2_to_imgmsg(vis_img, encoding="bgr8")
-        # img_msg.header.stamp = sonar_msg.header.stamp
-        # img_msg.header.frame_id = "base_link"
-        # self.feature_img_pub.publish(img_msg)
-
-        #convert to cartisian
-        # peaks = cv2.remap(peaks, self.map_x, self.map_y, cv2.INTER_LINEAR)        
-        # locs = np.c_[np.nonzero(peaks)]
-
         #convert from image coords to meters
-        x = locs[:,1] - self.cols / 2.
-        x = (-1 * ((x / float(self.cols / 2.)) * (self.width / 2.))) #+ self.width
-        y = (-1*(locs[:,0] / float(self.rows)) * self.height) + self.height
-        points = np.column_stack((y,x))
+        # Column index -> lateral offset from image center
+        lateral = (locs[:,1] - self.cols / 2.0) * self.res
+        # Row index -> range (row 0 = far, row max = close)
+        range_m = (self.rows - locs[:,0]) * self.res
+        
+        # Convert to Cartesian (x=forward, y=left) accounting for bearing center
+        # The image center corresponds to bearing_center, not 0
+        # bearing = atan2(lateral, range) + bearing_center for each pixel
+        bearing = np.arctan2(lateral, range_m) + self.bearing_center
+        dist = np.sqrt(lateral**2 + range_m**2)
+        
+        # Sonar convention: bearing=0 is forward (+X), positive bearing is left (+Y)
+        # Subtract 90° to align sonar frame with robot frame (sonar looks along +X)
+        bearing_ros = bearing - np.pi / 2.0
+        x_pts = dist * np.cos(bearing_ros)
+        y_pts = dist * np.sin(bearing_ros)
+        points = np.column_stack((x_pts, y_pts))
 
         # #filter the cloud using PCL
         # if len(points) and self.resolution > 0:

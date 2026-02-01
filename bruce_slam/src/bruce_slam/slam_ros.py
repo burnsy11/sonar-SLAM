@@ -6,7 +6,9 @@
 # - Message filter callbacks may need adjustment
 
 # python imports
+import os
 import threading
+import numpy as np
 import tf2_ros
 from tf2_ros import TransformBroadcaster
 import rclpy
@@ -18,6 +20,8 @@ from sensor_msgs.msg import PointCloud2
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from message_filters import ApproximateTimeSynchronizer
+from sensor_msgs_py import point_cloud2 as pc2
+from ament_index_python.packages import get_package_share_directory
 
 # bruce imports
 from bruce_slam.utils.io import *
@@ -50,53 +54,77 @@ class SLAMNode(Node, SLAM):
             ns (str, optional): The namespace of the node. Defaults to "~".
         """
 
+        # Declare parameters with defaults
+        self.declare_parameter("keyframe_duration", 1.0)
+        self.declare_parameter("keyframe_translation", 3.0)
+        self.declare_parameter("keyframe_rotation", 0.5235987755982988)
+        self.declare_parameter("enable_slam", True)
+        self.declare_parameter("prior_sigmas", [0.1, 0.1, 0.01])
+        self.declare_parameter("odom_sigmas", [0.2, 0.2, 0.02])
+        self.declare_parameter("icp_odom_sigmas", [0.1, 0.1, 0.01])
+        self.declare_parameter("point_resolution", 0.5)
+        self.declare_parameter("ssm.enable", True)
+        self.declare_parameter("ssm.min_points", 50)
+        self.declare_parameter("ssm.max_translation", 3.0)
+        self.declare_parameter("ssm.max_rotation", 0.5235987755982988)
+        self.declare_parameter("ssm.target_frames", 3)
+        self.declare_parameter("nssm.enable", True)
+        self.declare_parameter("nssm.min_st_sep", 8)
+        self.declare_parameter("nssm.min_points", 50)
+        self.declare_parameter("nssm.max_translation", 10.0)
+        self.declare_parameter("nssm.max_rotation", 1.0471975511965976)
+        self.declare_parameter("nssm.source_frames", 5)
+        self.declare_parameter("nssm.cov_samples", 30)
+        self.declare_parameter("pcm_queue_size", 5)
+        self.declare_parameter("min_pcm", 2)
+        self.declare_parameter("icp_config", "config/icp.yaml")
+
         #keyframe paramters, how often to add them
-        self.keyframe_duration = self.get_parameter(ns + "keyframe_duration").value  # CHECK: declare_parameter needed first
-        self.keyframe_duration = rclpy.duration.Duration(seconds=self.keyframe_duration).to_msg()
-        self.keyframe_translation = self.get_parameter(ns + "keyframe_translation").value  # CHECK: declare_parameter needed first
-        self.keyframe_rotation = self.get_parameter(ns + "keyframe_rotation").value  # CHECK: declare_parameter needed first
+        self.keyframe_duration = self.get_parameter("keyframe_duration").value  # Keep as float (seconds)
+        self.keyframe_translation = self.get_parameter("keyframe_translation").value
+        self.keyframe_rotation = self.get_parameter("keyframe_rotation").value
 
         #SLAM paramter, are we using SLAM or just dead reckoning
-        self.enable_slam = self.get_parameter(ns + "enable_slam").value  # CHECK: declare_parameter needed first
+        self.enable_slam = self.get_parameter("enable_slam").value
         print("SLAM STATUS: ", self.enable_slam)
 
         #noise models
-        self.prior_sigmas = self.get_parameter(ns + "prior_sigmas").value  # CHECK: declare_parameter needed first
-        self.odom_sigmas = self.get_parameter(ns + "odom_sigmas").value  # CHECK: declare_parameter needed first
-        self.icp_odom_sigmas = self.get_parameter(ns + "icp_odom_sigmas").value  # CHECK: declare_parameter needed first
+        self.prior_sigmas = self.get_parameter("prior_sigmas").value
+        self.odom_sigmas = self.get_parameter("odom_sigmas").value
+        self.icp_odom_sigmas = self.get_parameter("icp_odom_sigmas").value
 
         #resultion for map downsampling
-        self.point_resolution = self.get_parameter(ns + "point_resolution").value  # CHECK: declare_parameter needed first
+        self.point_resolution = self.get_parameter("point_resolution").value
 
         #sequential scan matching parameters (SSM)
-        self.ssm_params.enable = self.get_parameter(ns + "ssm/enable").value  # CHECK: declare_parameter needed first
-        self.ssm_params.min_points = self.get_parameter(ns + "ssm/min_points").value  # CHECK: declare_parameter needed first
-        self.ssm_params.max_translation = self.get_parameter(ns + "ssm/max_translation").value  # CHECK: declare_parameter needed first
-        self.ssm_params.max_rotation = self.get_parameter(ns + "ssm/max_rotation").value  # CHECK: declare_parameter needed first
-        self.ssm_params.target_frames = self.get_parameter(ns + "ssm/target_frames").value  # CHECK: declare_parameter needed first
+        self.ssm_params.enable = self.get_parameter("ssm.enable").value
+        self.ssm_params.min_points = self.get_parameter("ssm.min_points").value
+        self.ssm_params.max_translation = self.get_parameter("ssm.max_translation").value
+        self.ssm_params.max_rotation = self.get_parameter("ssm.max_rotation").value
+        self.ssm_params.target_frames = self.get_parameter("ssm.target_frames").value
         print("SSM: ", self.ssm_params.enable)
 
         #non sequential scan matching parameters (NSSM) aka loop closures
-        self.nssm_params.enable = self.get_parameter(ns + "nssm/enable").value  # CHECK: declare_parameter needed first
-        self.nssm_params.min_st_sep = self.get_parameter(ns + "nssm/min_st_sep").value  # CHECK: declare_parameter needed first
-        self.nssm_params.min_points = self.get_parameter(ns + "nssm/min_points").value  # CHECK: declare_parameter needed first
-        self.nssm_params.max_translation = self.get_parameter(ns + "nssm/max_translation").value  # CHECK: declare_parameter needed first
-        self.nssm_params.max_rotation = self.get_parameter(ns + "nssm/max_rotation").value  # CHECK: declare_parameter needed first
-        self.nssm_params.source_frames = self.get_parameter(ns + "nssm/source_frames").value  # CHECK: declare_parameter needed first
-        self.nssm_params.cov_samples = self.get_parameter(ns + "nssm/cov_samples").value  # CHECK: declare_parameter needed first
+        self.nssm_params.enable = self.get_parameter("nssm.enable").value
+        self.nssm_params.min_st_sep = self.get_parameter("nssm.min_st_sep").value
+        self.nssm_params.min_points = self.get_parameter("nssm.min_points").value
+        self.nssm_params.max_translation = self.get_parameter("nssm.max_translation").value
+        self.nssm_params.max_rotation = self.get_parameter("nssm.max_rotation").value
+        self.nssm_params.source_frames = self.get_parameter("nssm.source_frames").value
+        self.nssm_params.cov_samples = self.get_parameter("nssm.cov_samples").value
         print("NSSM: ", self.nssm_params.enable)
 
         #pairwise consistency maximization parameters for loop closure 
         #outliar rejection
-        self.pcm_queue_size = self.get_parameter(ns + "pcm_queue_size").value  # CHECK: declare_parameter needed first
-        self.min_pcm = self.get_parameter(ns + "min_pcm").value  # CHECK: declare_parameter needed first
+        self.pcm_queue_size = self.get_parameter("pcm_queue_size").value
+        self.min_pcm = self.get_parameter("min_pcm").value
 
         #mak delay between an incoming point cloud and dead reckoning
         self.feature_odom_sync_max_delay = 0.5
 
         #define the subsrcibing topics
-        self.feature_sub = Subscriber(SONAR_FEATURE_TOPIC, PointCloud2)
-        self.odom_sub = Subscriber(self, LOCALIZATION_ODOM_TOPIC, Odometry)
+        self.feature_sub = Subscriber(self, PointCloud2, SONAR_FEATURE_TOPIC)
+        self.odom_sub = Subscriber(self, Odometry, LOCALIZATION_ODOM_TOPIC)
 
         #define the sync policy
         self.time_sync = ApproximateTimeSynchronizer(
@@ -127,8 +155,15 @@ class SLAMNode(Node, SLAM):
         #cv bridge object
         self.CVbridge = CvBridge()
 
-        #get the ICP configuration from the yaml fukle
-        icp_config = self.get_parameter(ns + "icp_config").value  # CHECK: declare_parameter needed first
+        #get the ICP configuration from the yaml file
+        icp_config = self.get_parameter("icp_config").value
+        # If icp_config is a relative path, resolve it relative to the package share directory
+        if not os.path.isabs(icp_config):
+            try:
+                package_share = get_package_share_directory('bruce_slam')
+                icp_config = os.path.join(package_share, icp_config)
+            except Exception:
+                pass  # Keep the original path if package lookup fails
         self.icp.loadFromYaml(icp_config)
         
         # define the robot ID this is not used here, extended in multi-robot SLAM
@@ -159,22 +194,29 @@ class SLAMNode(Node, SLAM):
             feature_msg (PointCloud2): the incoming sonar point cloud
             odom_msg (Odometry): the incoming DVL/IMU state estimate
         """
-
         #aquire the lock 
         self.lock.acquire()
 
-        #get rostime from the point cloud
-        time = feature_msg.header.stamp
+        #get rostime from the point cloud (convert to float seconds for Keyframe)
+        stamp = feature_msg.header.stamp
+        time = stamp.sec + stamp.nanosec * 1e-9
 
         #get the dead reckoning pose from the odom msg, GTSAM pose object
         dr_pose3 = r2g(odom_msg.pose.pose)
 
         #init a new key frame
         frame = Keyframe(False, time, dr_pose3)
+        frame.stamp = stamp  # Store original ROS Time for publishing
 
         #convert the point cloud message to a numpy array of 2D
-        points = ros_numpy.point_cloud2.pointcloud2_to_xyz_array(feature_msg)
-        points = np.c_[points[:,0] , -1 *  points[:,2]]
+        points_gen = pc2.read_points(feature_msg, field_names=('x', 'y', 'z'), skip_nans=False)
+        points_list = list(points_gen)
+        if len(points_list) > 0:
+            # Extract x, y, z from structured array
+            points = np.array([[p[0], p[1], p[2]] for p in points_list], dtype=np.float32)
+            points = np.c_[points[:,0], points[:,1]]  # Use x, y for 2D SLAM
+        else:
+            points = np.zeros((0, 2), dtype=np.float32)
 
         # In case feature extraction is skipped in this frame
         if len(points) and np.isnan(points[0, 0]):
@@ -238,7 +280,7 @@ class SLAMNode(Node, SLAM):
 
         #define a pose with covariance message 
         pose_msg = PoseWithCovarianceStamped()
-        pose_msg.header.stamp = self.current_frame.time
+        pose_msg.header.stamp = self.current_frame.stamp
         if self.rov_id == "":
             pose_msg.header.frame_id = "map"
         else:
@@ -255,13 +297,18 @@ class SLAMNode(Node, SLAM):
         o2m = g2r(o2m)
         p = o2m.position
         q = o2m.orientation
-        self.tf.sendTransform(
-            (p.x, p.y, p.z),
-            [q.x, q.y, q.z, q.w],
-            self.current_frame.time,
-            "odom",
-            "map",
-        )
+        
+        # ROS2 sendTransform requires a TransformStamped message
+        from geometry_msgs.msg import TransformStamped
+        t = TransformStamped()
+        t.header.stamp = self.current_frame.stamp
+        t.header.frame_id = "map"
+        t.child_frame_id = "odom"
+        t.transform.translation.x = p.x
+        t.transform.translation.y = p.y
+        t.transform.translation.z = p.z
+        t.transform.rotation = q
+        self.tf.sendTransform(t)
 
         odom_msg = Odometry()
         odom_msg.header = pose_msg.header
@@ -299,7 +346,7 @@ class SLAMNode(Node, SLAM):
 
             #conver this list to a series of multi-colored lines and publish
             link_msg = ros_constraints(links)
-            link_msg.header.stamp = self.current_keyframe.time
+            link_msg.header.stamp = self.current_keyframe.stamp
             if self.rov_id != "":
                 link_msg.header.frame_id = self.rov_id + "_map"
             self.constraint_pub.publish(link_msg)
@@ -314,7 +361,7 @@ class SLAMNode(Node, SLAM):
 
         #convert to a ros color line
         traj_msg = ros_colorline_trajectory(poses)
-        traj_msg.header.stamp = self.current_keyframe.time
+        traj_msg.header.stamp = self.current_keyframe.stamp
         if self.rov_id == "":
             traj_msg.header.frame_id = "map"
         else:
@@ -363,9 +410,11 @@ class SLAMNode(Node, SLAM):
 
         #convert the point cloud to a ros message and publish
         cloud_msg = n2r(sampled_xyzi, "PointCloudXYZI")
-        cloud_msg.header.stamp = self.current_keyframe.time
+        cloud_msg.header.stamp = self.current_keyframe.stamp
         if self.rov_id == "":
             cloud_msg.header.frame_id = "map"
         else:
             cloud_msg.header.frame_id = self.rov_id + "_map"
+
+        print("Publishing point cloud with ", len(sampled_xyzi), " points.")
         self.cloud_pub.publish(cloud_msg)

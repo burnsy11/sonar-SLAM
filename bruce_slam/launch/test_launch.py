@@ -64,7 +64,6 @@ def generate_launch_description():
     # Config file paths
     dead_reckoning_config = os.path.join(bruce_slam_dir, 'config', 'dead_reckoning.yaml')
     feature_config = os.path.join(bruce_slam_dir, 'config', 'feature.yaml')
-    gyro_config = os.path.join(bruce_slam_dir, 'config', 'gyro.yaml')
     slam_config = os.path.join(bruce_slam_dir, 'config', 'slam.yaml')
     
     # RViz config
@@ -78,15 +77,7 @@ def generate_launch_description():
             PushRosNamespace('bruce'),
             PushRosNamespace('slam'),
             
-            # # Gyro fusion node (if not using Kalman)
-            # Node(
-            #     condition=UnlessCondition(LaunchConfiguration('kalman_dead_reckoning')),
-            #     package='bruce_slam',
-            #     executable='gyro_node.py',
-            #     name='gyro_fusion',
-            #     output='screen',
-            #     parameters=[gyro_config]
-            # ),
+
             
             # # Dead reckoning node (if not using Kalman)
             # Node(
@@ -137,7 +128,7 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         name='map_to_world_tf_publisher',
-        arguments=['0', '0', '0', '0', '0', '3.14159', 'world', 'map']
+        arguments=['0', '0', '0', '0', '0', '0.0', 'world', 'map']
     )
     
     # RViz node
@@ -163,5 +154,5 @@ def generate_launch_description():
         kill_arg,
         online_nodes,
         map_to_world_tf,
-        # rviz_node,
+        rviz_node,
     ])

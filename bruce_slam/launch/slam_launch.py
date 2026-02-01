@@ -29,7 +29,7 @@ def generate_launch_description():
     
     kalman_dead_reckoning_arg = DeclareLaunchArgument(
         'kalman_dead_reckoning',
-        default_value='false',
+        default_value='true',
         description='Use Kalman filter for dead reckoning'
     )
     
@@ -64,29 +64,21 @@ def generate_launch_description():
     # Config file paths
     dead_reckoning_config = os.path.join(bruce_slam_dir, 'config', 'dead_reckoning.yaml')
     feature_config = os.path.join(bruce_slam_dir, 'config', 'feature.yaml')
-    gyro_config = os.path.join(bruce_slam_dir, 'config', 'gyro.yaml')
+    
     slam_config = os.path.join(bruce_slam_dir, 'config', 'slam.yaml')
     
-    # RViz config
+    # RViz config - use ROS2 compatible version
     rviz_config = os.path.join(bruce_slam_dir, 'rviz', 'video.rviz')
     
     # Online mode nodes (when file argument is empty)
     online_nodes = GroupAction(
-        condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('file'), "' != ''"]))
-,
+        condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('file'), "' != ''"])),
+
         actions=[
             PushRosNamespace('bruce'),
             PushRosNamespace('slam'),
             
-            # Gyro fusion node (if not using Kalman)
-            Node(
-                condition=UnlessCondition(LaunchConfiguration('kalman_dead_reckoning')),
-                package='bruce_slam',
-                executable='gyro_node.py',
-                name='gyro_fusion',
-                output='screen',
-                parameters=[gyro_config]
-            ),
+            
             
             # Dead reckoning node (if not using Kalman)
             Node(
@@ -134,12 +126,11 @@ def generate_launch_description():
     # Static transform publisher (map to world)
     # In ROS2, we use a Node instead of a separate executable
     map_to_world_tf = Node(
-        condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('file'), "' != ''"]))
-,
+        condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('file'), "' != ''"])),
         package='tf2_ros',
         executable='static_transform_publisher',
         name='map_to_world_tf_publisher',
-        arguments=['0', '0', '0', '0', '0', '3.14159', 'world', 'map']
+        arguments=['0', '0', '0', '0', '0', '0.0', 'world', 'map']
     )
     
     # RViz node

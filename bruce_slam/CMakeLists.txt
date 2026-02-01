@@ -56,7 +56,6 @@ install(PROGRAMS
   scripts/mapping_node.py
   scripts/dead_reckoning_node.py
   scripts/feature_extraction_node.py
-  scripts/gyro_node.py
   scripts/kalman_node.py
   DESTINATION lib/${PROJECT_NAME}
 )

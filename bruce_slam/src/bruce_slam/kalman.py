@@ -141,7 +141,10 @@ class KalmanNode(Node):
 		roll_x, pitch_y, yaw_z = euler_from_quaternion(
 			(imu_msg.orientation.x, imu_msg.orientation.y, imu_msg.orientation.z, imu_msg.orientation.w)
 		)
-		euler_angle = np.array([[self.imu_offset + roll_x], [pitch_y], [yaw_z]])
+
+		#FIXME: Swapping IMU roll and yaw to match simulator orientation
+		# euler_angle = np.array([[self.imu_offset + roll_x], [pitch_y], [yaw_z]])
+		euler_angle = np.array([[self.imu_offset + yaw_z], [pitch_y], [roll_x]])
 
 		if self.imu_yaw0 is None:
 			self.imu_yaw0 = yaw_z
@@ -161,6 +164,16 @@ class KalmanNode(Node):
 		pose2 = gtsam.Pose2(self.pose.x(), self.pose.y(), self.pose.rotation().yaw())
 		point = pose2.transformFrom(local_point)
 		self.pose = gtsam.Pose3(R, gtsam.Point3(point[0], point[1], 0.0))
+
+		# print("[DEBUG] IMU callback:")
+		# print(f"[DEBUG] imu offset: {self.imu_offset}")
+		# print(f"[DEBUG] imu_msg orientation: ({imu_msg.orientation.x}, {imu_msg.orientation.y}, {imu_msg.orientation.z}, {imu_msg.orientation.w})")
+		# print(f"[DEBUG] roll_x: {roll_x}, pitch_y: {pitch_y}, yaw_z: {yaw_z}")
+		# print(f"[DEBUG] state_vector: {self.state_vector.T}")
+		# print(f"[DEBUG] euler_angle: {euler_angle.T}")
+		# print(f"[DEBUG] trans_x: {trans_x}, trans_y: {trans_y}")
+		# print(f"[DEBUG] pose position: ({self.pose.x()}, {self.pose.y()}, {self.pose.z()})")
+		# print(f"[DEBUG] pose rotation yaw: {self.pose.rotation().yaw()}")
 
 		self.send_odometry(imu_msg.header.stamp)
 
@@ -203,14 +216,14 @@ class KalmanNode(Node):
 		if self.tf1 is None:
 			return
 
-		ts = TransformStamped()
-		ts.header = header
-		ts.child_frame_id = "base_link"
-		ts.transform.translation.x = odom_msg.pose.pose.position.x
-		ts.transform.translation.y = odom_msg.pose.pose.position.y
-		ts.transform.translation.z = odom_msg.pose.pose.position.z
-		ts.transform.rotation = odom_msg.pose.pose.orientation
-		self.tf1.sendTransform(ts)
+		# ts = TransformStamped()
+		# ts.header = header
+		# ts.child_frame_id = "base_link"
+		# ts.transform.translation.x = odom_msg.pose.pose.position.x
+		# ts.transform.translation.y = odom_msg.pose.pose.position.y
+		# ts.transform.translation.z = odom_msg.pose.pose.position.z
+		# ts.transform.rotation = odom_msg.pose.pose.orientation
+		# self.tf1.sendTransform(ts)
 
 	def _declare_parameters(self, ns: str) -> None:
 		self.declare_parameter(ns + "state_vector", [0.0] * 12)
@@ -246,8 +259,8 @@ class KalmanNode(Node):
 		self.A_imu = self._matrix_param(ns + "A_imu", 12, 12)
 
 		self.dvl_max_velocity = float(self.get_parameter(ns + "dvl_max_velocity").value)
-		# self.imu_offset = float(self.get_parameter(ns + "imu_offset").value)
-		self.imu_offset = np.pi / 2
+		self.imu_offset = float(self.get_parameter(ns + "imu_offset").value)
+		# self.imu_offset = np.pi / 2
 
 	def _vector_param(self, name: str, length: int) -> np.ndarray:
 		raw = np.array(self.get_parameter(name).value, dtype=float).reshape(-1)

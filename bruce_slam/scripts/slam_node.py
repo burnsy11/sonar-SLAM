@@ -16,7 +16,6 @@ def offline(args)->None:
     from rosgraph_msgs.msg import Clock
     from dead_reckoning_node import DeadReckoningNode
     from feature_extraction_node import FeatureExtraction
-    from gyro_node import GyroFilter
     from mapping_node import MappingNode
     from bruce_slam.utils import io
 
@@ -30,8 +29,6 @@ def offline(args)->None:
     dead_reckoning_node.init_node(SLAM_NS + "localization/")
     feature_extraction_node = FeatureExtraction('feature_extraction_offline')
     feature_extraction_node.init_node(SLAM_NS + "feature_extraction/")
-    gyro_node = GyroFilter('gyro_offline')
-    gyro_node.init_node(SLAM_NS + "gyro/")
     """mp_node = MappingNode()
     mp_node.init_node(SLAM_NS + "mapping/")"""
     clock_pub = node.create_publisher(Clock, "/clock", 100)
@@ -53,8 +50,7 @@ def offline(args)->None:
             dead_reckoning_node.depth_sub.callback(msg)
         elif topic == SONAR_TOPIC or SONAR_TOPIC_UNCOMPRESSED:
             feature_extraction_node.sonar_sub.callback(msg)
-        elif topic == GYRO_TOPIC:
-            gyro_node.gyro_sub.callback(msg)
+
 
         # use the IMU to drive the clock
         if topic == IMU_TOPIC or topic == IMU_TOPIC_MK_II:
