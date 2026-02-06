@@ -156,8 +156,8 @@ def ros_constraints(links):
     marker.color.a = 1.0
 
     for point1, point2, color in links:
-        point1 = Point(point1[0], point1[1], point1[2])
-        point2 = Point(point2[0], point2[1], point2[2])
+        point1 = Point(x=float(point1[0]), y=float(point1[1]), z=float(point1[2]))
+        point2 = Point(x=float(point2[0]), y=float(point2[1]), z=float(point2[2]))
         marker.points.append(point1)
         marker.points.append(point2)
         marker.colors.append(colors[color])

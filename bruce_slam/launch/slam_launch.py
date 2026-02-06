@@ -20,6 +20,12 @@ def generate_launch_description():
         default_value='true',
         description='Launch RViz'
     )
+
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='true',
+        description='Use simulation time if true'
+    )
     
     enable_slam_arg = DeclareLaunchArgument(
         'enable_slam',
@@ -87,7 +93,7 @@ def generate_launch_description():
                 executable='dead_reckoning_node.py',
                 name='dead_reckoning',
                 output='screen',
-                parameters=[dead_reckoning_config]
+                parameters=[dead_reckoning_config, {'use_sim_time': LaunchConfiguration('use_sim_time')}]
             ),
             
             # Kalman filter node (if using Kalman)
@@ -96,7 +102,8 @@ def generate_launch_description():
                 package='bruce_slam',
                 executable='kalman_node.py',
                 name='kalman',
-                output='screen'
+                output='screen',
+                parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
             ),
             
             # Feature extraction node
@@ -105,7 +112,7 @@ def generate_launch_description():
                 executable='feature_extraction_node.py',
                 name='feature_extraction',
                 output='screen',
-                parameters=[feature_config]
+                parameters=[feature_config, {'use_sim_time': LaunchConfiguration('use_sim_time')}]
             ),
             
             # SLAM node
@@ -117,7 +124,8 @@ def generate_launch_description():
                 parameters=[
                     slam_config,
                     {'enable_slam': LaunchConfiguration('enable_slam')},
-                    {'save_fig': False}
+                    {'save_fig': False},
+                    {'use_sim_time': LaunchConfiguration('use_sim_time')}
                 ]
             ),
         ]
@@ -130,7 +138,8 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         name='map_to_world_tf_publisher',
-        arguments=['0', '0', '0', '0', '0', '0.0', 'world', 'map']
+        arguments=['0', '0', '0', '0', '0', '0.0', 'world', 'map'],
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
     )
     
     # RViz node
@@ -140,7 +149,8 @@ def generate_launch_description():
         executable='rviz2',
         name='rviz2',
         arguments=['-d', rviz_config],
-        output='screen'
+        output='screen',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
     )
     
     # Offline mode would require additional handling
@@ -148,6 +158,7 @@ def generate_launch_description():
     
     return LaunchDescription([
         rviz_arg,
+        use_sim_time_arg,
         enable_slam_arg,
         kalman_dead_reckoning_arg,
         file_arg,

@@ -159,12 +159,12 @@ Visualization Manager:
       Position Transformer: XYZ
       Queue Size: 10
       Selectable: true
-      Size (Pixels): 3
+      Size (Pixels): 2
       Size (m): 1
-      Style: Flat Squares
+      Style: Points
       Topic: /bruce/slam/feature_extraction/feature
       Unreliable: false
-      Use Fixed Frame: true
+      Use Fixed Frame: false
       Use rainbow: true
       Value: true
     - Class: rviz_default_plugins/Image

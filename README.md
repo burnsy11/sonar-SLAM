@@ -13,19 +13,25 @@ To build use:
 ```
 colcon build --packages-up-to bruce_slam
 ```
-
 To run, I have been using the following launch file, and just extending it as I need.:
 
 ```
 ros2 launch bruce_slam test_launch.py
 ```
 
-30/1/26
-I have finished the conversion to ROS2 Humble (I think). I have tested the build and launch, but not the actual functionality of the SLAM system yet.
+To run the full slam system, you can use the following launch file:
+```
+ros2 launch bruce_slam slam_launch.py
+```
 
-The pressure and depth is not integrated yet.
+Note by default I have made `slam_launch.py` run with `use_sim_time` set to true. You can have the bag play with the `--clock` option or publish the `/clock` topic yourself (its in the bag already). You need to filter out the `/tf` messages from the bag as they contain the ground truth transforms for the robot which interfer with the SLAM system. I have been doing this by playing the bag with the following command:
 
-I have been using the Kalman filter for odom (not the dead reckoning node), as I think it'll will be better. Lmk if you disagree.
+```
+ros2 bag play testing_data/dvl_fallback_0.2trans_0.4rot_fixed/ -l --clock \
+  --topics /dvl/data /sonar/ping /oceansim/robot/imu
+```
+
+## Bag
 
 I made a script to convert the bag topics and message types to the ones we are using. You need to copy the `custom_message` folder from the PC to the workspace and build and source it first.
 
@@ -35,7 +41,13 @@ Use it like:
 python3 convert_bag.py <input_bag> <output_bag>
 ```
 
+## Progress
+7/2/26
+I have finished the conversion to ROS2 Humble and it works end-to-end. I have tested the build and launch, but not the actual functionality of the SLAM system yet.
 
+The pressure and depth is not integrated yet.
+
+I have been using the Kalman filter for odom (not the dead reckoning node), as I think it'll will be better. Lmk if you disagree.
 
 # BlueRov SLAM 
 

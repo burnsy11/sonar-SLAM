@@ -11,6 +11,7 @@ import cv2
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, Image
+
 from cv_bridge import CvBridge
 # ros_numpy replaced with sensor_msgs_py in ROS2
 
@@ -143,7 +144,7 @@ class FeatureExtraction(Node):
             10,
         )
 
-        # feature publish topic
+        # feature publish topic (for SLAM sync)
         self.feature_pub = self.create_publisher(PointCloud2, SONAR_FEATURE_TOPIC, 10)
 
         # vis publish topic
@@ -230,7 +231,7 @@ class FeatureExtraction(Node):
         feature_msg.header.stamp = ping.header.stamp
         feature_msg.header.frame_id = "base_link"
 
-        #publish the point cloud, to be used by SLAM
+        # publish the point cloud, to be used by SLAM
         self.feature_pub.publish(feature_msg)
 
     #@add_lock

@@ -89,6 +89,9 @@ class KalmanNode(Node):
 		self.dvl_sub = None
 		# self.depth_sub = None  # Pressure sensor currently disabled.
 
+		# Track the last message timestamp to detect time jumps (bag loops)
+		self._last_stamp_sec: Optional[float] = None
+
 	def init_node(self, ns: str = "~") -> None:
 		"""Initialise parameters, publishers, and subscribers."""
 
@@ -123,28 +126,53 @@ class KalmanNode(Node):
 	#         self.state_vector, self.cov_matrix, depth, self.H_depth, self.R_depth
 	#     )
 
+	def _reset_state(self) -> None:
+		"""Reset all filter state — called when a time jump (bag loop) is detected."""
+		loginfo("Time jump detected — resetting Kalman filter state.")
+		self.state_vector = np.zeros((12, 1))
+		self.cov_matrix = np.eye(12)
+		self.pose = gtsam.Pose3(gtsam.Rot3(), gtsam.Point3(0.0, 0.0, 0.0))
+		self.imu_yaw0 = None
+		self._last_stamp_sec = None
+
+	def _check_time_jump(self, stamp) -> bool:
+		"""Return True (and reset) if the message timestamp jumped backwards."""
+		cur = stamp.sec + stamp.nanosec * 1e-9
+		if self._last_stamp_sec is not None and cur < self._last_stamp_sec - 1.0:
+			self._reset_state()
+			return True
+		self._last_stamp_sec = cur
+		return False
+
 	def dvl_callback(self, dvl_msg: DVL) -> None:
-		dvl_measurement = np.array(
-			[[dvl_msg.velocity.x], [dvl_msg.velocity.y], [dvl_msg.velocity.z]]
-		)
+		try:
+			if self._check_time_jump(dvl_msg.header.stamp):
+				return
 
-		if np.any(np.abs(dvl_measurement) > self.dvl_max_velocity):
-			return
+			dvl_measurement = np.array(
+				[[dvl_msg.velocity.x], [dvl_msg.velocity.y], [dvl_msg.velocity.z]]
+			)
 
-		self.state_vector, self.cov_matrix = self.kalman_correct(
-			self.state_vector, self.cov_matrix, dvl_measurement, self.H_dvl, self.R_dvl
-		)
+			if np.any(np.abs(dvl_measurement) > self.dvl_max_velocity):
+				return
+
+			self.state_vector, self.cov_matrix = self.kalman_correct(
+				self.state_vector, self.cov_matrix, dvl_measurement, self.H_dvl, self.R_dvl
+			)
+		except Exception as e:
+			self.get_logger().warning(f"DVL callback error (skipping frame): {e}")
 
 	def imu_callback(self, imu_msg: Imu) -> None:
+		if self._check_time_jump(imu_msg.header.stamp):
+			return
+
 		predicted_x, predicted_P = self.kalman_predict(self.state_vector, self.cov_matrix, self.A_imu)
 
 		roll_x, pitch_y, yaw_z = euler_from_quaternion(
 			(imu_msg.orientation.x, imu_msg.orientation.y, imu_msg.orientation.z, imu_msg.orientation.w)
 		)
 
-		#FIXME: Swapping IMU roll and yaw to match simulator orientation
-		# euler_angle = np.array([[self.imu_offset + roll_x], [pitch_y], [yaw_z]])
-		euler_angle = np.array([[self.imu_offset + yaw_z], [pitch_y], [roll_x]])
+		euler_angle = np.array([[self.imu_offset + roll_x], [pitch_y], [yaw_z]])
 
 		if self.imu_yaw0 is None:
 			self.imu_yaw0 = yaw_z
@@ -164,16 +192,6 @@ class KalmanNode(Node):
 		pose2 = gtsam.Pose2(self.pose.x(), self.pose.y(), self.pose.rotation().yaw())
 		point = pose2.transformFrom(local_point)
 		self.pose = gtsam.Pose3(R, gtsam.Point3(point[0], point[1], 0.0))
-
-		# print("[DEBUG] IMU callback:")
-		# print(f"[DEBUG] imu offset: {self.imu_offset}")
-		# print(f"[DEBUG] imu_msg orientation: ({imu_msg.orientation.x}, {imu_msg.orientation.y}, {imu_msg.orientation.z}, {imu_msg.orientation.w})")
-		# print(f"[DEBUG] roll_x: {roll_x}, pitch_y: {pitch_y}, yaw_z: {yaw_z}")
-		# print(f"[DEBUG] state_vector: {self.state_vector.T}")
-		# print(f"[DEBUG] euler_angle: {euler_angle.T}")
-		# print(f"[DEBUG] trans_x: {trans_x}, trans_y: {trans_y}")
-		# print(f"[DEBUG] pose position: ({self.pose.x()}, {self.pose.y()}, {self.pose.z()})")
-		# print(f"[DEBUG] pose rotation yaw: {self.pose.rotation().yaw()}")
 
 		self.send_odometry(imu_msg.header.stamp)
 
@@ -197,12 +215,14 @@ class KalmanNode(Node):
 		return corrected_x, corrected_P
 
 	def send_odometry(self, stamp) -> None:
-		header = Header()
-		header.stamp = stamp
-		header.frame_id = "odom"
+		# Odometry keeps the original message stamp so that
+		# ApproximateTimeSynchronizer can pair it with feature messages.
+		odom_header = Header()
+		odom_header.stamp = stamp
+		odom_header.frame_id = "odom"
 
 		odom_msg = Odometry()
-		odom_msg.header = header
+		odom_msg.header = odom_header
 		odom_msg.pose.pose = g2r(self.pose)
 		odom_msg.child_frame_id = "base_link"
 		odom_msg.twist.twist.linear.x = 0.0
@@ -216,14 +236,16 @@ class KalmanNode(Node):
 		if self.tf1 is None:
 			return
 
-		# ts = TransformStamped()
-		# ts.header = header
-		# ts.child_frame_id = "base_link"
-		# ts.transform.translation.x = odom_msg.pose.pose.position.x
-		# ts.transform.translation.y = odom_msg.pose.pose.position.y
-		# ts.transform.translation.z = odom_msg.pose.pose.position.z
-		# ts.transform.rotation = odom_msg.pose.pose.orientation
-		# self.tf1.sendTransform(ts)
+		# TF uses the message stamp for consistent timing with sensor data.
+		ts = TransformStamped()
+		ts.header.stamp = stamp
+		ts.header.frame_id = "odom"
+		ts.child_frame_id = "base_link"
+		ts.transform.translation.x = odom_msg.pose.pose.position.x
+		ts.transform.translation.y = odom_msg.pose.pose.position.y
+		ts.transform.translation.z = odom_msg.pose.pose.position.z
+		ts.transform.rotation = odom_msg.pose.pose.orientation
+		self.tf1.sendTransform(ts)
 
 	def _declare_parameters(self, ns: str) -> None:
 		self.declare_parameter(ns + "state_vector", [0.0] * 12)
