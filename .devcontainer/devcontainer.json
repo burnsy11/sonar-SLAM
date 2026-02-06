@@ -2,12 +2,17 @@
     "name": "sonar-SLAM ROS2",
     "dockerFile": "Dockerfile",
     "context": "..",
+    "mounts": [
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
+    ],
+    "containerEnv": {
+        "DISPLAY": "${localEnv:DISPLAY}"
+    },
     "customizations": {
         "vscode": {
             "extensions": [
                 "ms-vscode.vscode-json",
                 "ms-python.python",
-                "ms-iot.vscode-ros"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/bin/python3"

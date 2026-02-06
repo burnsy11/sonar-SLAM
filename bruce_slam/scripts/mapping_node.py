@@ -1,7 +1,15 @@
+# NOTE: This file was auto-converted from ROS1 to ROS2
+# Manual review and testing required for:
+# - Parameter declarations (declare_parameter before get_parameter)
+# - Time conversions may need adjustment
+# - Transform broadcasting may need geometry_msgs imports
+# - Message filter callbacks may need adjustment
+
 #!/usr/bin/env python
 import threading
 import numpy as np
-import rospy
+import rclpy
+from rclpy.node import Node
 from message_filters import TimeSynchronizer, Subscriber, ApproximateTimeSynchronizer
 from sensor_msgs.msg import PointCloud2
 from nav_msgs.msg import OccupancyGrid
@@ -13,41 +21,43 @@ from bruce_slam.utils.io import *
 from bruce_slam.mapping import Mapping
 
 
-class MappingNode(Mapping):
-    def __init__(self):
-        super(MappingNode, self).__init__()
+class MappingNode(Node, Mapping):
+    def __init__(self, node_name='mapping'):
+        Node.__init__(self, node_name)
+        Mapping.__init__(self)
+        set_global_logger(self.get_logger())
 
         self.lock = threading.RLock()
         self.use_slam_traj = True
 
     def init_node(self, ns="~"):
-        self.use_slam_traj = rospy.get_param(ns + "use_slam_traj", True)
+        self.use_slam_traj = self.get_parameter(ns + "use_slam_traj", True).value  # CHECK: declare_parameter needed first
 
-        self.x0, self.y0 = rospy.get_param(ns + "origin")
-        self.width, self.height = rospy.get_param(ns + "size")
-        self.resolution = rospy.get_param(ns + "resolution")
-        self.inc = rospy.get_param(ns + "inc")
+        self.x0, self.y0 = self.get_parameter(ns + "origin").value  # CHECK: declare_parameter needed first
+        self.width, self.height = self.get_parameter(ns + "size").value  # CHECK: declare_parameter needed first
+        self.resolution = self.get_parameter(ns + "resolution").value  # CHECK: declare_parameter needed first
+        self.inc = self.get_parameter(ns + "inc").value  # CHECK: declare_parameter needed first
 
-        self.pub_occupancy1 = rospy.get_param(ns + "pub_occupancy1")
-        self.hit_prob = rospy.get_param(ns + "hit_prob")
-        self.miss_prob = rospy.get_param(ns + "miss_prob")
-        self.inflation_angle = rospy.get_param(ns + "inflation_angle")
-        self.inflation_radius = rospy.get_param(ns + "inflation_range")
+        self.pub_occupancy1 = self.get_parameter(ns + "pub_occupancy1").value  # CHECK: declare_parameter needed first
+        self.hit_prob = self.get_parameter(ns + "hit_prob").value  # CHECK: declare_parameter needed first
+        self.miss_prob = self.get_parameter(ns + "miss_prob").value  # CHECK: declare_parameter needed first
+        self.inflation_angle = self.get_parameter(ns + "inflation_angle").value  # CHECK: declare_parameter needed first
+        self.inflation_radius = self.get_parameter(ns + "inflation_range").value  # CHECK: declare_parameter needed first
 
-        self.pub_occupancy2 = rospy.get_param(ns + "pub_occupancy2")
-        self.inflation_radius = rospy.get_param(ns + "inflation_radius")
-        self.outlier_filter_radius = rospy.get_param(ns + "outlier_filter_radius")
-        self.outlier_filter_min_points = rospy.get_param(
+        self.pub_occupancy2 = self.get_parameter(ns + "pub_occupancy2").value  # CHECK: declare_parameter needed first
+        self.inflation_radius = self.get_parameter(ns + "inflation_radius").value  # CHECK: declare_parameter needed first
+        self.outlier_filter_radius = self.get_parameter(ns + "outlier_filter_radius").value  # CHECK: declare_parameter needed first
+        self.outlier_filter_min_points = self.get_parameter(
             ns + "outlier_filter_min_points"
-        )
+        ).value  # CHECK: declare_parameter needed first
 
-        self.pub_intensity = rospy.get_param(ns + "pub_intensity")
+        self.pub_intensity = self.get_parameter(ns + "pub_intensity").value  # CHECK: declare_parameter needed first
 
         # Only update keyframe that has significant movement
-        self.min_translation = rospy.get_param(ns + "min_translation")
-        self.min_rotation = rospy.get_param(ns + "min_rotation")
+        self.min_translation = self.get_parameter(ns + "min_translation").value  # CHECK: declare_parameter needed first
+        self.min_rotation = self.get_parameter(ns + "min_rotation").value  # CHECK: declare_parameter needed first
 
-        self.sonar_sub = Subscriber(SONAR_TOPIC, OculusPing)
+        self.sonar_sub = Subscriber(self, SONAR_TOPIC, Ping)
         if self.use_slam_traj:
             self.traj_sub = Subscriber(SLAM_TRAJ_TOPIC, PointCloud2)
         else:
@@ -67,14 +77,10 @@ class MappingNode(Mapping):
         )
         self.ts.registerCallback(self.tpf_callback)
 
-        self.intensity_map_pub = rospy.Publisher(
-            MAPPING_INTENSITY_TOPIC, OccupancyGrid, queue_size=1, latch=True
-        )
-        self.occupancy_map_pub = rospy.Publisher(
-            MAPPING_OCCUPANCY_TOPIC, OccupancyGrid, queue_size=1, latch=True
-        )
+        self.intensity_map_pub = self.create_publisher(OccupancyGrid, MAPPING_INTENSITY_TOPIC, 1)
+        self.occupancy_map_pub = self.create_publisher(OccupancyGrid, MAPPING_OCCUPANCY_TOPIC, 1)
 
-        self.get_map_srv = rospy.Service(ns + "get_map", GetOccupancyMap, self.get_map)
+        self.get_map_srv = self.create_service(GetOccupancyMap, ns + "get_map", self.get_map)
 
         self.configure()
         loginfo("Mapping node is initialized")
@@ -164,12 +170,12 @@ def offline(args):
 
     loc_node = LocalizationNode()
     loc_node.init_node("/bruce/localization/")
-    clock_pub = rospy.Publisher("/clock", Clock, queue_size=100)
+    clock_pub = self.create_publisher(Clock, "/clock", 100)
     for topic, msg in read_bag(args.file, args.start, args.duration, progress=True):
-        while not rospy.is_shutdown():
+        while not not rclpy.ok():
             if callback_lock_event.wait(1.0):
                 break
-        if rospy.is_shutdown():
+        if not rclpy.ok():
             break
 
         if topic == IMU_TOPIC:
@@ -184,7 +190,7 @@ def offline(args):
 
 
 if __name__ == "__main__":
-    rospy.init_node("mapping", log_level=rospy.INFO)
+    # ROS2: Node initialization moved to class constructor
 
     node = MappingNode()
     node.init_node()
@@ -192,7 +198,10 @@ if __name__ == "__main__":
     args, _ = common_parser().parse_known_args()
     if not args.file:
         loginfo("Start online mapping...")
-        rospy.spin()
+        rclpy.spin(node)
     else:
         loginfo("Start offline mapping...")
         offline(args)
+    
+    node.destroy_node()
+    rclpy.shutdown()

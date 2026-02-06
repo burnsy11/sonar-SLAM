@@ -1,0 +1,2 @@
+# This package is ROS1/catkin-based and is not buildable in a ROS2 colcon workspace.
+# Remove this file if/when the package is ported to ROS2 (ament).

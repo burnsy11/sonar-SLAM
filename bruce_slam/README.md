@@ -28,17 +28,14 @@ filter:
 
 Once the cloud is filtered, it is packaged and published with the same timestamp as the incoming sonar image. 
 
-## Gyroscope Node
-This node subscribes to our fiber-optic-gyroscope (FOG) and converts the change in angle to an angle estimate. Note that in our framework, while we have a 3-axis FOG, we only use the yaw axis. This node is still under active development, but as of now it simply integrates the gyro measurements to output Euler angles. So far there is no filtering required for this device. More TBD.
 
 ## Dead Reckoning Node
-This node combines IMU, DVL, pressure sensor, and FOG (if used) into a 6DOF state estimate. Note that while we get a 6DOF estimate, the SLAM solution only needs x,y, and theta. Note that ROS may need 6DOF for transform/vis purposes. 
+This node combines IMU, DVL, and pressure sensor into a 6DOF state estimate. Note that while we get a 6DOF estimate, the SLAM solution only needs x,y, and theta. Note that ROS may need 6DOF for transform/vis purposes. 
 
-This node uses a single callback to subscribe to the IMU, DVL, and FOG (if used). The vectornav IMU outputs an attitude estimate and this is used to update the dead reckoning attitude estimate. Then using delta_t and the DVL's speed measurements (in x/y only) we propagate our state forward. Note that the IMU comes into this node filtered and the DVL is not filtered. Future development will be considered. Recall that dead reckoning is used as an initial guess between keyframes only. 
+This node uses a single callback to subscribe to the IMU, DVL, and depth sensor. The vectornav IMU outputs an attitude estimate and this is used to update the dead reckoning attitude estimate. Then using delta_t and the DVL's speed measurements (in x/y only) we propagate our state forward. Note that the IMU comes into this node filtered and the DVL is not filtered. Future development will be considered. Recall that dead reckoning is used as an initial guess between keyframes only. 
 
 Some parameters below
 dvl_max_velocity: max DVL velocity
-use_gyro:  should we use the FOG? Do NOT set it to true if there is no FOG sensor. 
 imu_version: which IMU driver are we using 1 is the heavy and 2 is heavy MKII. The provided data file is 1.
 
 ## SLAM Node 

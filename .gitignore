@@ -7,4 +7,7 @@ bruce_slam/utils/__pycache__/
 build/
 install/
 log/
-*.egg-info/
+*.egg-info/*.ros1_backup
+
+testing_data/
+custom_message/

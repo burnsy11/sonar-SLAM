@@ -1,3 +1,10 @@
+# NOTE: This file was auto-converted from ROS1 to ROS2
+# Manual review and testing required for:
+# - Parameter declarations (declare_parameter before get_parameter)
+# - Time conversions may need adjustment
+# - Transform broadcasting may need geometry_msgs imports
+# - Message filter callbacks may need adjustment
+
 import numpy as np
 import cv2
 from scipy.special import logit, expit

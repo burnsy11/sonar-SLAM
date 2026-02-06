@@ -1,17 +1,15 @@
-# Localization node
-dvl_max_velocity: 0.5
+# Localization node - ROS2 format
+"/**":
+  ros__parameters:
+    dvl_max_velocity: 0.5
 
-# [x y z roll pitch yaw]
-imu_pose: [0, 0, 0, deg(-90), 0, 0]  
+    # [x y z roll pitch yaw] - Note: deg() expressions need evaluation in code
+    imu_pose: [0.0, 0.0, 0.0, -1.5707963267948966, 0.0, 0.0]  # deg(-90) = -pi/2
 
-# keyframe spacing for the dead reckoning system
-keyframe_duration: 1.0
-keyframe_translation: 4.0
-keyframe_rotation: deg(30)
+    # keyframe spacing for the dead reckoning system
+    keyframe_duration: 1.0
+    keyframe_translation: 4.0
+    keyframe_rotation: 0.5235987755982988  # deg(30) = pi/6
 
-# should we use the FOG? Do not set to true if there is no FOG sensor. 
-use_gyro: False
-
-# which IMU driver are we using 1 is the heavy and 2 is heavy MKII
-# sample_data file is version 1
-imu_version: 1
+    # which IMU driver are we using 1 is the heavy and 2 is heavy MKII. The provided data file is 1.
+    imu_version: 1

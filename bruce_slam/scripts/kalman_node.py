@@ -1,23 +1,21 @@
-#!/usr/bin/env python
-
-# python imports
-import rospy
-
-# pull in the dead reckoning code
+#!/usr/bin/env python3
+import rclpy
 from bruce_slam.utils.io import *
 from bruce_slam.kalman import KalmanNode
 
-
 if __name__ == "__main__":
-    rospy.init_node("kalman", log_level=rospy.INFO)
+    rclpy.init()
 
-    node = KalmanNode()
+    node = KalmanNode('kalman_filter')
     node.init_node()
 
     args, _ = common_parser().parse_known_args()
     if not args.file:
-        loginfo("Start online Kalman...")
-        rospy.spin()
+        loginfo("Start online kalman filter...")
+        rclpy.spin(node)
     else:
-        loginfo("Start offline Kalman...")
+        loginfo("Start offline kalman filter...")
         offline(args)
+
+    node.destroy_node()
+    rclpy.shutdown()

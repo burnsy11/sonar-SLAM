@@ -3,12 +3,10 @@ from typing import Any
 import numpy as np
 import gtsam
 import cv2
-import cv_bridge
-import rospy
+from cv_bridge import CvBridge
 from sensor_msgs.msg import Image, PointCloud2
-import sensor_msgs.point_cloud2 as pc2
-from geometry_msgs.msg import Pose
-import ros_numpy
+from sensor_msgs_py import point_cloud2 as pc2
+from geometry_msgs.msg import Pose, PoseStamped, Quaternion
 import struct
 
 
@@ -159,7 +157,8 @@ def r2g(ros_msg) -> gtsam.Pose3:
         gtsam.Pose3: the input data packaged as a gtsam 3D pose
     """
 
-    if ros_msg._type == "geometry_msgs/Pose":
+    # Use isinstance checks because ROS2 message objects don't have a `_type` attribute
+    if isinstance(ros_msg, Pose):
         x = ros_msg.position.x
         y = ros_msg.position.y
         z = ros_msg.position.z
@@ -170,9 +169,9 @@ def r2g(ros_msg) -> gtsam.Pose3:
         return gtsam.Pose3(
             n2g([qx, qy, qz, qw], "Quaternion"), n2g([x, y, z], "Point3")
         )
-    elif ros_msg._type == "geometry_msgs/PoseStamped":
+    elif isinstance(ros_msg, PoseStamped):
         return r2g(ros_msg.pose)
-    elif ros_msg._type == "geometry_msgs/Quaternion":
+    elif isinstance(ros_msg, Quaternion):
         return n2g([ros_msg.x, ros_msg.y, ros_msg.z, ros_msg.w], "Quaternion")
     else:
         raise NotImplementedError(
@@ -199,7 +198,11 @@ def g2r(gtsam_obj:gtsam.Pose3) -> Pose:
         pose_msg.position.x = pose.x()
         pose_msg.position.y = pose.y()
         pose_msg.position.z = pose.z()
-        qw, qx, qy, qz = pose.rotation().quaternion()
+        q = pose.rotation().toQuaternion()
+        qw = q.w()
+        qx = q.x()
+        qy = q.y()
+        qz = q.z()
         pose_msg.orientation.x = qx
         pose_msg.orientation.y = qy
         pose_msg.orientation.z = qz
@@ -211,14 +214,14 @@ def g2r(gtsam_obj:gtsam.Pose3) -> Pose:
         )
 
 
-bridge = cv_bridge.CvBridge()
+bridge = CvBridge()
 
 
-def r2n(ros_msg:OculusPing) -> np.array:
-    """Convert a ros message of type OculusPing to a numpy array
+def r2n(ros_msg) -> np.array:
+    """Convert a ros message to a numpy array
 
     Args:
-        ros_msg (OculusPing): the input sonar message
+        ros_msg: the input message (Ping, Image, or PointCloud2)
 
     Raises:
         NotImplementedError: catch the wrong types
@@ -227,12 +230,31 @@ def r2n(ros_msg:OculusPing) -> np.array:
         np.array: the image data in numpy array form
     """
 
-    if ros_msg._type == "sonar_oculus/OculusPing":
+    if ros_msg._type == "oculus_interfaces/Ping":
+        # Extract image data from new Ping message format
+        n_ranges = ros_msg.n_ranges
+        n_beams = ros_msg.n_beams
+        sample_size = ros_msg.sample_size
+        step = ros_msg.step
+        has_gains = ros_msg.has_gains
         
-        img = r2n(ros_msg.ping)
-        img = np.clip(
-            cv2.pow(img / 255.0, 255.0 / ros_msg.fire_msg.gamma) * 255.0, 0, 255
-        )
+        # Convert ping_data to numpy array
+        ping_data = np.frombuffer(ros_msg.ping_data, dtype=np.uint8)
+        
+        # If gains are present, each row starts with 4 bytes of gain data
+        if has_gains:
+            # Reconstruct image, removing gain data from each row
+            img_data = []
+            for i in range(n_ranges):
+                row_start = i * step
+                # Skip first 4 bytes (gain) and extract the actual image data
+                row_data = ping_data[row_start + 4 : row_start + 4 + n_beams * sample_size]
+                img_data.append(row_data)
+            img = np.array(img_data, dtype=np.uint8).reshape(n_ranges, n_beams)
+        else:
+            # No gains, just reshape the data
+            img = ping_data.reshape(n_ranges, n_beams).astype(np.uint8)
+        
         return np.float32(img)
     elif ros_msg._type == "sensor_msgs/Image":
         img = bridge.imgmsg_to_cv2(ros_msg, desired_encoding="passthrough")
@@ -257,11 +279,12 @@ def build_rgb_cloud(arr:np.array) -> pc2:
     """
 
     # define the point cloud fields and header
-    header = rospy.Header()
-    fields = [pc2.PointField('x', 0, pc2.PointField.FLOAT32, 1),
-            pc2.PointField('y', 4, pc2.PointField.FLOAT32, 1),
-            pc2.PointField('z', 8, pc2.PointField.FLOAT32, 1),
-            pc2.PointField('rgb', 12, pc2.PointField.UINT32, 1),
+    from std_msgs.msg import Header
+    header = Header()
+    fields = [pc2.PointField(name='x', offset=0, datatype=pc2.PointField.FLOAT32, count=1),
+            pc2.PointField(name='y', offset=4, datatype=pc2.PointField.FLOAT32, count=1),
+            pc2.PointField(name='z', offset=8, datatype=pc2.PointField.FLOAT32, count=1),
+            pc2.PointField(name='rgb', offset=12, datatype=pc2.PointField.UINT32, count=1),
             ]
 
     # parse out and convert the RGB values to RGBA
@@ -287,6 +310,7 @@ def n2r(numpy_arr:np.array, msg:any) -> any:
         any: the output message
     """
     
+    bridge = CvBridge()
     if msg == "Image":
         if numpy_arr.ndim == 2 or numpy_arr.shape[2] == 1:
             return bridge.cv2_to_imgmsg(numpy_arr, encoding="8U")
@@ -295,15 +319,17 @@ def n2r(numpy_arr:np.array, msg:any) -> any:
     elif msg == "ImageBGR":
         return bridge.cv2_to_imgmsg(numpy_arr, encoding="bgr8")
     elif msg == "PointCloudXYZ":
-        header = rospy.Header()
+        from std_msgs.msg import Header
+        header = Header()
         return pc2.create_cloud_xyz32(header, np.array(numpy_arr))
     elif msg == "PointCloudXYZI":
-        header = rospy.Header()
+        from std_msgs.msg import Header
+        header = Header()
         fields = [
-            pc2.PointField("x", 0, pc2.PointField.FLOAT32, 1),
-            pc2.PointField("y", 4, pc2.PointField.FLOAT32, 1),
-            pc2.PointField("z", 8, pc2.PointField.FLOAT32, 1),
-            pc2.PointField("i", 12, pc2.PointField.FLOAT32, 1),
+            pc2.PointField(name="x", offset=0, datatype=pc2.PointField.FLOAT32, count=1),
+            pc2.PointField(name="y", offset=4, datatype=pc2.PointField.FLOAT32, count=1),
+            pc2.PointField(name="z", offset=8, datatype=pc2.PointField.FLOAT32, count=1),
+            pc2.PointField(name="i", offset=12, datatype=pc2.PointField.FLOAT32, count=1),
         ]
         return pc2.create_cloud(header, fields, np.array(numpy_arr))
     elif msg == "PointCloudXYZRGB":

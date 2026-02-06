@@ -1,25 +1,20 @@
-#!/usr/bin/env python
-import rospy
+#!/usr/bin/env python3
+import rclpy
 from bruce_slam.utils.io import *
 from bruce_slam.feature_extraction import FeatureExtraction
 
 if __name__ == "__main__":
-
-    #init the ros node
-    rospy.init_node("feature_extraction_node", log_level=rospy.INFO)
+    rclpy.init()
 
     #call class constructor
-    node = FeatureExtraction()
-    node.init_node()
+    node = FeatureExtraction('feature_extraction')
 
     #get args
     parser = common_parser()
     args, _ = parser.parse_known_args()
 
-    #log and spin
-    if not args.file:
-        loginfo("Start online sonar feature extraction...")
-        rospy.spin()
-    else:
-        loginfo("Start offline sonar feature extraction...")
-        offline(args)
+    # spin the node to handle callbacks
+    rclpy.spin(node)
+
+    node.destroy_node()
+    rclpy.shutdown()

@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # python imports
-import rospy
+import rclpy
 
 # pull in the dead reckoning code
 from bruce_slam.utils.io import *
@@ -9,15 +9,19 @@ from bruce_slam.dead_reckoning import DeadReckoningNode
 
 
 if __name__ == "__main__":
-    rospy.init_node("localization", log_level=rospy.INFO)
+    rclpy.init()
 
-    node = DeadReckoningNode()
+    node = DeadReckoningNode('dead_reckoning')
     node.init_node()
 
     args, _ = common_parser().parse_known_args()
     if not args.file:
         loginfo("Start online localization...")
-        rospy.spin()
+        rclpy.spin(node)
+        node.destroy_node()
+        rclpy.shutdown()
     else:
         loginfo("Start offline localization...")
         offline(args)
+        node.destroy_node()
+        rclpy.shutdown()
