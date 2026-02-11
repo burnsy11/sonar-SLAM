@@ -65,6 +65,13 @@ class FeatureExtraction(Node):
         self.outlier_filter_min_points = 5
         self.skip = 1
 
+        # --- clustering params (new) ---
+        self.enable_clustering = True
+        self.cluster_A_min = 5          # min blob area in pixels
+        self.cluster_A_max = 999999999       # max blob area in pixels (near blobs can be big)
+        self.cluster_morph = 5          # 0 disables morphology; otherwise odd kernel size (3,5,...)
+        self.cluster_repr = "max"       # "max" or "centroid"
+
         # for offline visualization
         self.feature_img = None
 
@@ -114,6 +121,17 @@ class FeatureExtraction(Node):
         # other
         self.declare_parameter('compressed_images', False)
 
+        # debug
+        self.declare_parameter('debug.enable', True)
+        self.declare_parameter('debug.every_n', 10)
+
+        # clustering
+        self.declare_parameter('clustering.enable', True)
+        self.declare_parameter('clustering.A_min', 1)
+        self.declare_parameter('clustering.A_max', 999999999)
+        self.declare_parameter('clustering.morph_kernel', 0)
+        self.declare_parameter('clustering.repr', 'max')  # 'max' or 'centroid' 
+
         # --- read parameters into instance variables ---
         self.Ntc = self.get_parameter('CFAR.Ntc').value
         self.Ngc = self.get_parameter('CFAR.Ngc').value
@@ -132,6 +150,16 @@ class FeatureExtraction(Node):
         self.color = self.get_parameter('visualization.color').value
 
         self.compressed_images = self.get_parameter('compressed_images').value
+        self.debug_enable = self.get_parameter('debug.enable').value
+        self.debug_every_n = int(self.get_parameter('debug.every_n').value)
+        self.enable_clustering = self.get_parameter('clustering.enable').value
+        self.cluster_A_min = self.get_parameter('clustering.A_min').value
+        self.cluster_A_max = self.get_parameter('clustering.A_max').value
+        self.cluster_morph = self.get_parameter('clustering.morph_kernel').value
+        self.cluster_repr = self.get_parameter('clustering.repr').value
+
+        # FIXME: Just for debugging, will remove later
+        self.threshold = 0
 
         # cv bridge
         self.BridgeInstance = CvBridge()
@@ -149,6 +177,9 @@ class FeatureExtraction(Node):
 
         # vis publish topic
         self.feature_img_pub = self.create_publisher(Image, SONAR_FEATURE_IMG_TOPIC, 10)
+
+        # polar peaks debug image publisher
+        self.peaks_img_pub = self.create_publisher(Image, "sonar/peaks_polar", 10)
 
         # finalize detector
         
@@ -273,13 +304,188 @@ class FeatureExtraction(Node):
             # No gains, just reshape the data
             img = ping_data.reshape(n_ranges, n_beams).astype(np.uint8)
 
+        # Quick debug: image stats (rate-limited)
+        if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+            try:
+                self.get_logger().info(
+                    f"ping {sonar_msg.ping_id} img: shape={img.shape} "
+                    f"min={int(img.min())} max={int(img.max())} mean={float(img.mean()):.1f}"
+                )
+            except Exception:
+                pass
+
         #generate a mesh grid mapping from polar to cartisian
         self.generate_map_xy(sonar_msg)
 
         # Detect targets and check against threshold using CFAR (in polar coordinates)
+        points = None
         peaks = self.detector.detect(img, self.alg)
+        peaks_before = int(np.count_nonzero(peaks))
+
         peaks &= img > self.threshold
 
+        rows = np.nonzero(peaks)[0]
+
+        if len(rows):
+            closest_row = rows.min()
+            closest_range = (closest_row + 0.5) * sonar_msg.range_resolution
+            self.get_logger().info(f"closest CFAR detection: row={closest_row} range~{closest_range:.2f} m")
+
+        if self.debug_enable and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+            if len(rows):
+                self.get_logger().info(
+                    f"peaks row stats: min={rows.min()} p10={np.percentile(rows,10):.0f} "
+                    f"med={np.median(rows):.0f} p90={np.percentile(rows,90):.0f} max={rows.max()}"
+                )
+            else:
+                self.get_logger().info("peaks row stats: empty")
+
+
+        peaks_after = int(np.count_nonzero(peaks))
+
+        # Debug: log CFAR counts and publish polar mask (rate-limited)
+        if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+            try:
+                self.get_logger().info(
+                    f"ping {sonar_msg.ping_id} CFAR peaks: before_thr={peaks_before} after_thr={peaks_after} "
+                    f"thr={self.threshold} Pfa={self.Pfa} Ntc={self.Ntc} Ngc={self.Ngc} alg={self.alg}"
+                )
+                polar_vis = (peaks.astype(np.uint8) * 255)
+                polar_vis_bgr = cv2.cvtColor(polar_vis, cv2.COLOR_GRAY2BGR)
+                msg = self.BridgeInstance.cv2_to_imgmsg(polar_vis_bgr, encoding="bgr8")
+                msg.header.stamp = sonar_msg.header.stamp
+                msg.header.frame_id = "base_link"
+                self.peaks_img_pub.publish(msg)
+            except Exception:
+                pass
+
+        A_min = int(self.cluster_A_min)
+        A_max = int(self.cluster_A_max)
+        # -------------------------------
+        # Polar clustering: peaks -> blobs -> 1 detection per blob
+        # -------------------------------
+        if self.enable_clustering:
+            mask = peaks.astype(np.uint8)
+
+            # Optional morphology to suppress speckle and fill tiny gaps
+            if self.cluster_morph and self.cluster_morph >= 3:
+                k = int(self.cluster_morph)
+                if k % 2 == 0:
+                    k += 1
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)   # remove isolated pixels
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)  # fill small holes
+
+            num, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
+
+            # after connectedComponentsWithStats
+            comp_info = []
+            for cid in range(1, num):
+                area = stats[cid, cv2.CC_STAT_AREA]
+                x, y, w, h = stats[cid, cv2.CC_STAT_LEFT], stats[cid, cv2.CC_STAT_TOP], stats[cid, cv2.CC_STAT_WIDTH], stats[cid, cv2.CC_STAT_HEIGHT]
+                r_min = y
+                r_max = y + h - 1
+                comp_info.append((area, r_min, r_max, cid))
+            comp_info.sort(reverse=True)
+
+            if self.debug_enable and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+                for area, rmin, rmax, cid in comp_info[:5]:
+                    self.get_logger().info(f"comp {cid}: area={area} r=[{rmin},{rmax}]")
+
+
+            # Debug: connected components stats
+            areas = stats[1:, cv2.CC_STAT_AREA] if num > 1 else np.array([])
+            if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+                self.get_logger().info(f"ping {sonar_msg.ping_id} CC: total={num-1} (excluding background) connectivity=8")
+                try:
+                    if len(areas):
+                        self.get_logger().info(
+                            f"ping {sonar_msg.ping_id} CC: num={num-1} "
+                            f"area[min/med/max]={int(areas.min())}/{int(np.median(areas))}/{int(areas.max())} "
+                            f"A_min={A_min} A_max={A_max}"
+                        )
+                    else:
+                        self.get_logger().info(f"ping {sonar_msg.ping_id} CC: num=0 (mask empty after morphology?)")
+                except Exception:
+                    self.get_logger().info(f"ping {sonar_msg.ping_id} CC: num={num-1} (error logging stats)")
+                    pass
+                
+
+            det_rc = []  # list of (range_row, beam_col) detections in POLAR indices
+            passed = 0
+
+            for cid in range(1, num):  # skip background 0
+                area = stats[cid, cv2.CC_STAT_AREA]
+                if area < A_min or area > A_max:
+                    continue
+                passed += 1
+
+                if self.cluster_repr == "centroid":
+                    # centroids are (x=col, y=row)
+                    c_col, c_row = centroids[cid]
+                    r = int(round(c_row))
+                    b = int(round(c_col))
+                    det_rc.append((r, b))
+                else:
+                    # "max": choose strongest-intensity pixel inside the blob (more stable than centroid)
+                    rr, cc = np.where(labels == cid)
+                    if len(rr) == 0:
+                        continue
+                    vals = img[rr, cc]
+                    j = int(np.argmax(vals))
+                    det_rc.append((int(rr[j]), int(cc[j])))
+
+            det_rc = np.asarray(det_rc, dtype=np.int32)
+
+            # Debug: log passed components
+            if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+                try:
+                    if det_rc.size:
+                        self.get_logger().info(
+                            f"ping {sonar_msg.ping_id} CC passed={passed} det_idx: r[min/max]={det_rc[:,0].min()}/{det_rc[:,0].max()} "
+                            f"b[min/max]={det_rc[:,1].min()}/{det_rc[:,1].max()} n_ranges={sonar_msg.n_ranges} n_beams={sonar_msg.n_beams}"
+                        )
+                    else:
+                        self.get_logger().info(f"ping {sonar_msg.ping_id} CC passed={passed} det_idx: none")
+                except Exception:
+                    pass
+
+            # Convert polar detections (row, col) -> XY points
+            if len(det_rc) == 0:
+                points = np.zeros((0, 2), dtype=np.float32)
+            else:
+                r_idx = det_rc[:, 0]
+                b_idx = det_rc[:, 1]
+
+                dr = float(sonar_msg.range_resolution)
+
+                # Row index increases downward: row 0 = far, bottom = near.
+                range_m = (r_idx + 0.5) * dr
+
+                if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+                    try:
+                        self.get_logger().info(
+                            f"range_m[min/max]={float(range_m.min()):.3f}/{float(range_m.max()):.3f} dr={dr}"
+                        )
+                    except Exception:
+                        pass
+
+                bearings_rad = (np.asarray(sonar_msg.bearings, dtype=np.float32) * 0.01) * np.pi / 180.0
+                bearing = bearings_rad[np.clip(b_idx, 0, len(bearings_rad) - 1)]
+
+                if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+                    try:
+                        self.get_logger().info(
+                            f"bearing[min/max]={float(bearing.min()):.3f}/{float(bearing.max()):.3f} rad bearings_len={len(bearings_rad)}"
+                        )
+                    except Exception:
+                        pass
+
+                # Keep your existing convention: subtract 90° to align with robot frame
+                bearing_ros = bearing - np.pi / 2.0
+                x_pts = range_m * np.cos(bearing_ros)
+                y_pts = range_m * np.sin(bearing_ros)
+                points = np.column_stack((x_pts, y_pts)).astype(np.float32)
         # 1. Remap the intensity image (grayscale)
         vis_img = cv2.remap(img, self.map_x, self.map_y, cv2.INTER_LINEAR)
 
@@ -298,27 +504,33 @@ class FeatureExtraction(Node):
         img_msg.header.frame_id = "base_link"
         self.feature_img_pub.publish(img_msg)
 
-        # 6. Now, use the `cartesian_peaks` you already calculated
-        locs = np.c_[np.nonzero(cartesian_peaks)]
+        # 6. Convert detections to points.
+        if points is None:
+            locs = np.c_[np.nonzero(cartesian_peaks)]
 
-        #convert from image coords to meters
-        # Column index -> lateral offset from image center
-        lateral = (locs[:,1] - self.cols / 2.0) * self.res
-        # Row index -> range (row 0 = far, row max = close)
-        range_m = (self.rows - locs[:,0]) * self.res
-        
-        # Convert to Cartesian (x=forward, y=left) accounting for bearing center
-        # The image center corresponds to bearing_center, not 0
-        # bearing = atan2(lateral, range) + bearing_center for each pixel
-        bearing = np.arctan2(lateral, range_m) + self.bearing_center
-        dist = np.sqrt(lateral**2 + range_m**2)
-        
-        # Sonar convention: bearing=0 is forward (+X), positive bearing is left (+Y)
-        # Subtract 90° to align sonar frame with robot frame (sonar looks along +X)
-        bearing_ros = bearing - np.pi / 2.0
-        x_pts = dist * np.cos(bearing_ros)
-        y_pts = dist * np.sin(bearing_ros)
-        points = np.column_stack((x_pts, y_pts))
+            #convert from image coords to meters
+            # Column index -> lateral offset from image center
+            lateral = (locs[:,1] - self.cols / 2.0) * self.res
+            # Row index -> range (row 0 = far, row max = close)
+            range_m = (self.rows - locs[:,0]) * self.res
+
+            # Convert to Cartesian (x=forward, y=left) accounting for bearing center
+            bearing = np.arctan2(lateral, range_m) + self.bearing_center
+            dist = np.sqrt(lateral**2 + range_m**2)
+
+            # Sonar convention: bearing=0 is forward (+X), positive bearing is left (+Y)
+            # Subtract 90° to align sonar frame with robot frame (sonar looks along +X)
+            bearing_ros = bearing - np.pi / 2.0
+            x_pts = dist * np.cos(bearing_ros)
+            y_pts = dist * np.sin(bearing_ros)
+            points = np.column_stack((x_pts, y_pts)).astype(np.float32)
+
+        # Optional small downsampling after clustering/filtering
+        # if points is not None and len(points) and self.resolution > 0:
+        #     try:
+        #         points = pcl.downsample(points, self.resolution)
+        #     except Exception:
+        #         pass
 
         # #filter the cloud using PCL
         # if len(points) and self.resolution > 0:
@@ -330,6 +542,20 @@ class FeatureExtraction(Node):
         #     points = pcl.remove_outlier(
         #         points, self.outlier_filter_radius, self.outlier_filter_min_points
         #     )
+
+        # Debug: log the points we will publish (rate-limited)
+        if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+            try:
+                if points is not None and len(points):
+                    self.get_logger().info(
+                        f"publishing points: N={len(points)} "
+                        f"x[min/max]={float(points[:,0].min()):.2f}/{float(points[:,0].max()):.2f} "
+                        f"y[min/max]={float(points[:,1].min()):.2f}/{float(points[:,1].max()):.2f}"
+                    )
+                else:
+                    self.get_logger().info(f"publishing points: N=0")
+            except Exception:
+                pass
 
         #publish the feature message
         self.publish_features(sonar_msg, points)

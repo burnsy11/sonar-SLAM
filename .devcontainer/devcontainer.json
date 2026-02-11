@@ -12,7 +12,7 @@
         "vscode": {
             "extensions": [
                 "ms-vscode.vscode-json",
-                "ms-python.python",
+                "ms-python.python"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/bin/python3"

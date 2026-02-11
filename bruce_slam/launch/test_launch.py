@@ -21,6 +21,12 @@ def generate_launch_description():
         description='Launch RViz'
     )
     
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='true',
+        description='Use simulation time if true'
+    )
+    
     enable_slam_arg = DeclareLaunchArgument(
         'enable_slam',
         default_value='true',
@@ -66,13 +72,12 @@ def generate_launch_description():
     feature_config = os.path.join(bruce_slam_dir, 'config', 'feature.yaml')
     slam_config = os.path.join(bruce_slam_dir, 'config', 'slam.yaml')
     
-    # RViz config
-    rviz_config = os.path.join(bruce_slam_dir, 'rviz', 'video.rviz')
+    # RViz config (use test feature layout)
+    rviz_config = os.path.join(bruce_slam_dir, 'rviz', 'test_feature.rviz')
     
     # Online mode nodes (when file argument is empty)
     online_nodes = GroupAction(
-        condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('file'), "' != ''"]))
-,
+        condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('file'), "' != ''"])),
         actions=[
             PushRosNamespace('bruce'),
             PushRosNamespace('slam'),
@@ -89,12 +94,13 @@ def generate_launch_description():
             # ),
             
             # # Kalman filter node (if using Kalman)
-            Node(
-                package='bruce_slam',
-                executable='kalman_node.py',
-                name='kalman',
-                output='screen'
-            ),
+            # Node(
+            #     package='bruce_slam',
+            #     executable='kalman_node.py',
+            #     name='kalman',
+            #     output='screen',
+            #     parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
+            # ),
             
             # Feature extraction node
             Node(
@@ -102,7 +108,7 @@ def generate_launch_description():
                 executable='feature_extraction_node.py',
                 name='feature_extraction',
                 output='screen',
-                parameters=[feature_config]
+                parameters=[feature_config, {'use_sim_time': LaunchConfiguration('use_sim_time')}]
             ),
             
             # # SLAM node
@@ -123,12 +129,12 @@ def generate_launch_description():
     # Static transform publisher (map to world)
     # In ROS2, we use a Node instead of a separate executable
     map_to_world_tf = Node(
-        condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('file'), "' != ''"]))
-,
+        condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('file'), "' != ''"])),
         package='tf2_ros',
         executable='static_transform_publisher',
         name='map_to_world_tf_publisher',
-        arguments=['0', '0', '0', '0', '0', '0.0', 'world', 'map']
+        arguments=['0', '0', '0', '0', '0', '0.0', 'world', 'map'],
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
     )
     
     # RViz node
@@ -138,7 +144,8 @@ def generate_launch_description():
         executable='rviz2',
         name='rviz2',
         arguments=['-d', rviz_config],
-        output='screen'
+        output='screen',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
     )
     
     # Offline mode would require additional handling
@@ -146,6 +153,7 @@ def generate_launch_description():
     
     return LaunchDescription([
         rviz_arg,
+        use_sim_time_arg,
         enable_slam_arg,
         kalman_dead_reckoning_arg,
         file_arg,

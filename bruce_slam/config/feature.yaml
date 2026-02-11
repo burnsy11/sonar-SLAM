@@ -6,11 +6,11 @@
 "/bruce/slam/feature_extraction":
   ros__parameters:
     CFAR:
-      Ntc: 20          # number of training cells
-      Ngc: 20          # number of guard cells
-      Pfa: 0.05       # false alarm rate
+      Ntc: 240          # number of training cells
+      Ngc: 60           # number of guard cells
+      Pfa: 1e-5         # false alarm rate
       rank: 10         # matrix rank
-      alg: 'SOCA'      # CFAR method
+      alg: 'GOCA'      # CFAR method
 
     filter:
       threshold: 65    # min CFAR response
@@ -29,11 +29,11 @@
 feature_extraction:
   ros__parameters:
     CFAR:
-      Ntc: 40          # number of training cells
-      Ngc: 10          # number of guard cells
-      Pfa: 0.001       # false alarm rate
+      Ntc: 240          # number of training cells
+      Ngc: 60           # number of guard cells
+      Pfa: 1e-5         # false alarm rate
       rank: 10         # matrix rank
-      alg: 'SOCA'      # CFAR method
+      alg: 'GOCA'      # CFAR method
 
     filter:
       threshold: 65    # min CFAR response
