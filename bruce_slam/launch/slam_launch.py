@@ -87,14 +87,14 @@ def generate_launch_description():
             
             
             # Dead reckoning node (if not using Kalman)
-            Node(
-                condition=UnlessCondition(LaunchConfiguration('kalman_dead_reckoning')),
-                package='bruce_slam',
-                executable='dead_reckoning_node.py',
-                name='dead_reckoning',
-                output='screen',
-                parameters=[dead_reckoning_config, {'use_sim_time': LaunchConfiguration('use_sim_time')}]
-            ),
+            # Node(
+            #     condition=UnlessCondition(LaunchConfiguration('kalman_dead_reckoning')),
+            #     package='bruce_slam',
+            #     executable='dead_reckoning_node.py',
+            #     name='dead_reckoning',
+            #     output='screen',
+            #     parameters=[dead_reckoning_config, {'use_sim_time': LaunchConfiguration('use_sim_time')}]
+            # ),
             
             # Kalman filter node (if using Kalman)
             Node(

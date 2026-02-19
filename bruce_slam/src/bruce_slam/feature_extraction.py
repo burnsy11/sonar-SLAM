@@ -308,9 +308,9 @@ class FeatureExtraction(Node):
         orig_height, orig_width = img.shape
         img_original = img.copy()  # Keep original for visualization
         
-        # # Downscale to 1080p for faster feature extraction (maintain aspect ratio)
+        # Downscale to 480p for faster feature extraction (maintain aspect ratio)
+        target_size = 480
         max_dim = max(orig_height, orig_width)
-        target_size = max_dim
         scale_factor = target_size / max_dim
         target_height = int(orig_height * scale_factor)
         target_width = int(orig_width * scale_factor)
