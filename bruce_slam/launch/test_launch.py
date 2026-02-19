@@ -93,14 +93,14 @@ def generate_launch_description():
             #     output='screen',
             # ),
             
-            # # Kalman filter node (if using Kalman)
-            # Node(
-            #     package='bruce_slam',
-            #     executable='kalman_node.py',
-            #     name='kalman',
-            #     output='screen',
-            #     parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
-            # ),
+            # Kalman filter node (if using Kalman)
+            Node(
+                package='bruce_slam',
+                executable='kalman_node.py',
+                name='kalman',
+                output='screen',
+                parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
+            ),
             
             # Feature extraction node
             Node(
@@ -111,18 +111,18 @@ def generate_launch_description():
                 parameters=[feature_config, {'use_sim_time': LaunchConfiguration('use_sim_time')}]
             ),
             
-            # # SLAM node
-            # Node(
-            #     package='bruce_slam',
-            #     executable='slam_node.py',
-            #     name='slam',
-            #     output='screen',
-            #     parameters=[
-            #         slam_config,
-            #         {'enable_slam': LaunchConfiguration('enable_slam')},
-            #         {'save_fig': False}
-            #     ]
-            # ),
+            # SLAM node
+            Node(
+                package='bruce_slam',
+                executable='slam_node.py',
+                name='slam',
+                output='screen',
+                parameters=[
+                    slam_config,
+                    {'enable_slam': LaunchConfiguration('enable_slam')},
+                    {'save_fig': False}
+                ]
+            ),
         ]
     )
     

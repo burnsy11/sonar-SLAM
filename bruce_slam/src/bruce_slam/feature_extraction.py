@@ -67,8 +67,8 @@ class FeatureExtraction(Node):
 
         # --- clustering params (new) ---
         self.enable_clustering = True
-        self.cluster_A_min = 5          # min blob area in pixels
-        self.cluster_A_max = 999999999       # max blob area in pixels (near blobs can be big)
+        self.cluster_A_min = 4          # min blob area in pixels
+        self.cluster_A_max = 99999999       # max blob area in pixels (near blobs can be big)
         self.cluster_morph = 5          # 0 disables morphology; otherwise odd kernel size (3,5,...)
         self.cluster_repr = "max"       # "max" or "centroid"
 
@@ -304,6 +304,18 @@ class FeatureExtraction(Node):
             # No gains, just reshape the data
             img = ping_data.reshape(n_ranges, n_beams).astype(np.uint8)
 
+        # Store original image dimensions for later scaling
+        orig_height, orig_width = img.shape
+        img_original = img.copy()  # Keep original for visualization
+        
+        # # Downscale to 1080p for faster feature extraction (maintain aspect ratio)
+        max_dim = max(orig_height, orig_width)
+        target_size = max_dim
+        scale_factor = target_size / max_dim
+        target_height = int(orig_height * scale_factor)
+        target_width = int(orig_width * scale_factor)
+        img = cv2.resize(img, (target_width, target_height), interpolation=cv2.INTER_AREA)
+
         # Quick debug: image stats (rate-limited)
         if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
             try:
@@ -367,14 +379,28 @@ class FeatureExtraction(Node):
         if self.enable_clustering:
             mask = peaks.astype(np.uint8)
 
-            # Optional morphology to suppress speckle and fill tiny gaps
+            # Compute scaling factors between downsampled and original images
+            # row_scale = orig / target (multiply downsampled indices to get original indices)
+            row_scale = float(orig_height) / float(target_height) if target_height > 0 else 1.0
+            col_scale = float(orig_width) / float(target_width) if target_width > 0 else 1.0
+            area_scale = row_scale * col_scale
+
+            # Optional: small morphological opening to remove isolated white speckles
+            # without affecting larger clusters, followed by median blur.
             if self.cluster_morph and self.cluster_morph >= 3:
                 k = int(self.cluster_morph)
-                if k % 2 == 0:
-                    k += 1
-                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
-                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)   # remove isolated pixels
-                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)  # fill small holes
+                # scale kernel sizes to downsampled image (keep odd >=1)
+                k_scaled = max(1, int(round(k * (1.0 / area_scale**0.5))))
+                if k_scaled % 2 == 0:
+                    k_scaled += 1
+                open_k = 3
+                open_k_scaled = max(1, int(round(open_k * (1.0 / area_scale**0.5))))
+                if open_k_scaled % 2 == 0:
+                    open_k_scaled += 1
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_k_scaled, open_k_scaled))
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+                # then apply median blur to smooth remaining speckle
+                mask = cv2.medianBlur(mask, k_scaled)
 
             num, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
 
@@ -413,10 +439,13 @@ class FeatureExtraction(Node):
 
             det_rc = []  # list of (range_row, beam_col) detections in POLAR indices
             passed = 0
+            # Adjust area thresholds for downsampled image
+            A_min_eff = max(1, int(max(1, A_min) / area_scale))
+            A_max_eff = max(1, int(max(1, A_max) / area_scale))
 
             for cid in range(1, num):  # skip background 0
                 area = stats[cid, cv2.CC_STAT_AREA]
-                if area < A_min or area > A_max:
+                if area < A_min_eff or area > A_max_eff:
                     continue
                 passed += 1
 
@@ -428,12 +457,17 @@ class FeatureExtraction(Node):
                     det_rc.append((r, b))
                 else:
                     # "max": choose strongest-intensity pixel inside the blob (more stable than centroid)
-                    rr, cc = np.where(labels == cid)
-                    if len(rr) == 0:
+                    # limit search to bounding box for speed
+                    x, y, w, h = stats[cid, cv2.CC_STAT_LEFT], stats[cid, cv2.CC_STAT_TOP], stats[cid, cv2.CC_STAT_WIDTH], stats[cid, cv2.CC_STAT_HEIGHT]
+                    roi = img[y:y+h, x:x+w]
+                    roi_labels = labels[y:y+h, x:x+w]
+                    mask_loc = (roi_labels == cid)
+                    if not mask_loc.any():
                         continue
-                    vals = img[rr, cc]
+                    rr, cc = np.where(mask_loc)
+                    vals = roi[rr, cc]
                     j = int(np.argmax(vals))
-                    det_rc.append((int(rr[j]), int(cc[j])))
+                    det_rc.append((int(rr[j] + y), int(cc[j] + x)))
 
             det_rc = np.asarray(det_rc, dtype=np.int32)
 
@@ -454,6 +488,12 @@ class FeatureExtraction(Node):
             if len(det_rc) == 0:
                 points = np.zeros((0, 2), dtype=np.float32)
             else:
+                # Scale detection indices back to original image size
+                det_rc = det_rc.astype(np.float32)
+                det_rc[:, 0] = det_rc[:, 0] * row_scale  # row
+                det_rc[:, 1] = det_rc[:, 1] * col_scale  # col
+                det_rc = det_rc.astype(np.int32)
+
                 r_idx = det_rc[:, 0]
                 b_idx = det_rc[:, 1]
 
@@ -471,7 +511,10 @@ class FeatureExtraction(Node):
                         pass
 
                 bearings_rad = (np.asarray(sonar_msg.bearings, dtype=np.float32) * 0.01) * np.pi / 180.0
-                bearing = bearings_rad[np.clip(b_idx, 0, len(bearings_rad) - 1)]
+                # Beam index should correspond to original image column index (orig_width == n_beams)
+                n_beams = int(sonar_msg.n_beams)
+                b_idx_clipped = np.clip(b_idx.astype(np.int32), 0, n_beams - 1)
+                bearing = bearings_rad[b_idx_clipped]
 
                 if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
                     try:
@@ -486,14 +529,15 @@ class FeatureExtraction(Node):
                 x_pts = range_m * np.cos(bearing_ros)
                 y_pts = range_m * np.sin(bearing_ros)
                 points = np.column_stack((x_pts, y_pts)).astype(np.float32)
-        # 1. Remap the intensity image (grayscale)
-        vis_img = cv2.remap(img, self.map_x, self.map_y, cv2.INTER_LINEAR)
+        # 1. Remap the original intensity image (grayscale) for publication
+        vis_img = cv2.remap(img_original, self.map_x, self.map_y, cv2.INTER_LINEAR)
 
         # 2. Convert to BGR for overlay
         vis_img = cv2.cvtColor(vis_img, cv2.COLOR_GRAY2BGR)
 
-        # 3. Remap the binary peaks (USE INTER_NEAREST)
-        cartesian_peaks = cv2.remap(peaks.astype(np.uint8), self.map_x, self.map_y, cv2.INTER_NEAREST)
+        # 3. Remap the binary peaks (USE INTER_NEAREST) - need to upscale peaks back to original size first
+        peaks_original = cv2.resize(peaks, (orig_width, orig_height), interpolation=cv2.INTER_NEAREST)
+        cartesian_peaks = cv2.remap(peaks_original.astype(np.uint8), self.map_x, self.map_y, cv2.INTER_NEAREST)
 
         # 4. OVERLAY: Set all detected pixels to bright red
         vis_img[cartesian_peaks != 0] = [0, 0, 255]  # Bright Red
