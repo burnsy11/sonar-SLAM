@@ -2,6 +2,8 @@
     "name": "sonar-SLAM ROS2",
     "dockerFile": "Dockerfile",
     "context": "..",
+    "remoteUser": "vscode",
+    "updateRemoteUserUID": true,
     "mounts": [
         "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
     ],
@@ -12,7 +14,8 @@
         "vscode": {
             "extensions": [
                 "ms-vscode.vscode-json",
-                "ms-python.python"
+                "ms-python.python",
+                "ms-iot.vscode-ros"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/bin/python3"
