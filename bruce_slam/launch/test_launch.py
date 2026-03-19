@@ -5,7 +5,7 @@ Converted from ROS1 slam.launch
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, GroupAction, IncludeLaunchDescription
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node, SetParameter, PushRosNamespace
@@ -56,6 +56,12 @@ def generate_launch_description():
         'duration',
         default_value='-1',
         description='Duration for bag playback'
+    )
+
+    bag_path_arg = DeclareLaunchArgument(
+        'bag_path',
+        default_value='testing_data/dvl_fallback_0.2trans_0.4rot_fixed/',
+        description='ROS bag path used for test playback'
     )
     
     kill_arg = DeclareLaunchArgument(
@@ -117,10 +123,12 @@ def generate_launch_description():
                 executable='slam_node.py',
                 name='slam',
                 output='screen',
+                arguments=['--ros-args', '--log-level', 'debug'],
                 parameters=[
                     slam_config,
                     {'enable_slam': LaunchConfiguration('enable_slam')},
-                    {'save_fig': False}
+                    {'save_fig': False},
+                    {'use_sim_time': LaunchConfiguration('use_sim_time')}
                 ]
             ),
         ]
@@ -147,6 +155,22 @@ def generate_launch_description():
         output='screen',
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
     )
+
+    bag_playback = ExecuteProcess(
+        cmd=[
+            'ros2',
+            'bag',
+            'play',
+            LaunchConfiguration('bag_path'),
+            '-l',
+            '--clock',
+            '--topics',
+            '/dvl/data',
+            '/sonar/ping',
+            '/oceansim/robot/imu',
+        ],
+        output='screen'
+    )
     
     # Offline mode would require additional handling
     # For now, focusing on online mode as offline mode needs rosbag2 API
@@ -159,8 +183,10 @@ def generate_launch_description():
         file_arg,
         start_arg,
         duration_arg,
+        bag_path_arg,
         kill_arg,
         online_nodes,
         map_to_world_tf,
         rviz_node,
+        bag_playback,
     ])

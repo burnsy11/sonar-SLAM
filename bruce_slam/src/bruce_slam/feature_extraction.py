@@ -184,7 +184,9 @@ class FeatureExtraction(Node):
         # finalize detector
         
         # Log CFAR parameters
-        self.get_logger().info(f"CFAR Parameters: Ntc={self.Ntc}, Ngc={self.Ngc}, Pfa={self.Pfa}, rank={self.rank}")
+        # self.get_logger().info(
+        #     f"CFAR Parameters: Ntc={self.Ntc}, Ngc={self.Ngc}, Pfa={self.Pfa}, rank={self.rank}"
+        # )
 
         self.detector = CFAR(self.Ntc, self.Ngc, self.Pfa, self.rank)
 
@@ -317,14 +319,14 @@ class FeatureExtraction(Node):
         img = cv2.resize(img, (target_width, target_height), interpolation=cv2.INTER_AREA)
 
         # Quick debug: image stats (rate-limited)
-        if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
-            try:
-                self.get_logger().info(
-                    f"ping {sonar_msg.ping_id} img: shape={img.shape} "
-                    f"min={int(img.min())} max={int(img.max())} mean={float(img.mean()):.1f}"
-                )
-            except Exception:
-                pass
+        # if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+        #     try:
+        #         self.get_logger().info(
+        #             f"ping {sonar_msg.ping_id} img: shape={img.shape} "
+        #             f"min={int(img.min())} max={int(img.max())} mean={float(img.mean()):.1f}"
+        #         )
+        #     except Exception:
+        #         pass
 
         #generate a mesh grid mapping from polar to cartisian
         self.generate_map_xy(sonar_msg)
@@ -341,16 +343,18 @@ class FeatureExtraction(Node):
         if len(rows):
             closest_row = rows.min()
             closest_range = (closest_row + 0.5) * sonar_msg.range_resolution
-            self.get_logger().info(f"closest CFAR detection: row={closest_row} range~{closest_range:.2f} m")
+            # self.get_logger().info(
+            #     f"closest CFAR detection: row={closest_row} range~{closest_range:.2f} m"
+            # )
 
-        if self.debug_enable and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
-            if len(rows):
-                self.get_logger().info(
-                    f"peaks row stats: min={rows.min()} p10={np.percentile(rows,10):.0f} "
-                    f"med={np.median(rows):.0f} p90={np.percentile(rows,90):.0f} max={rows.max()}"
-                )
-            else:
-                self.get_logger().info("peaks row stats: empty")
+        # if self.debug_enable and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+        #     if len(rows):
+        #         self.get_logger().info(
+        #             f"peaks row stats: min={rows.min()} p10={np.percentile(rows,10):.0f} "
+        #             f"med={np.median(rows):.0f} p90={np.percentile(rows,90):.0f} max={rows.max()}"
+        #         )
+        #     else:
+        #         self.get_logger().info("peaks row stats: empty")
 
 
         peaks_after = int(np.count_nonzero(peaks))
@@ -358,10 +362,10 @@ class FeatureExtraction(Node):
         # Debug: log CFAR counts and publish polar mask (rate-limited)
         if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
             try:
-                self.get_logger().info(
-                    f"ping {sonar_msg.ping_id} CFAR peaks: before_thr={peaks_before} after_thr={peaks_after} "
-                    f"thr={self.threshold} Pfa={self.Pfa} Ntc={self.Ntc} Ngc={self.Ngc} alg={self.alg}"
-                )
+                # self.get_logger().info(
+                #     f"ping {sonar_msg.ping_id} CFAR peaks: before_thr={peaks_before} after_thr={peaks_after} "
+                #     f"thr={self.threshold} Pfa={self.Pfa} Ntc={self.Ntc} Ngc={self.Ngc} alg={self.alg}"
+                # )
                 polar_vis = (peaks.astype(np.uint8) * 255)
                 polar_vis_bgr = cv2.cvtColor(polar_vis, cv2.COLOR_GRAY2BGR)
                 msg = self.BridgeInstance.cv2_to_imgmsg(polar_vis_bgr, encoding="bgr8")
@@ -414,27 +418,33 @@ class FeatureExtraction(Node):
                 comp_info.append((area, r_min, r_max, cid))
             comp_info.sort(reverse=True)
 
-            if self.debug_enable and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
-                for area, rmin, rmax, cid in comp_info[:5]:
-                    self.get_logger().info(f"comp {cid}: area={area} r=[{rmin},{rmax}]")
+            # if self.debug_enable and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+            #     for area, rmin, rmax, cid in comp_info[:5]:
+            #         self.get_logger().info(f"comp {cid}: area={area} r=[{rmin},{rmax}]")
 
 
             # Debug: connected components stats
             areas = stats[1:, cv2.CC_STAT_AREA] if num > 1 else np.array([])
-            if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
-                self.get_logger().info(f"ping {sonar_msg.ping_id} CC: total={num-1} (excluding background) connectivity=8")
-                try:
-                    if len(areas):
-                        self.get_logger().info(
-                            f"ping {sonar_msg.ping_id} CC: num={num-1} "
-                            f"area[min/med/max]={int(areas.min())}/{int(np.median(areas))}/{int(areas.max())} "
-                            f"A_min={A_min} A_max={A_max}"
-                        )
-                    else:
-                        self.get_logger().info(f"ping {sonar_msg.ping_id} CC: num=0 (mask empty after morphology?)")
-                except Exception:
-                    self.get_logger().info(f"ping {sonar_msg.ping_id} CC: num={num-1} (error logging stats)")
-                    pass
+            # if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+            #     self.get_logger().info(
+            #         f"ping {sonar_msg.ping_id} CC: total={num-1} (excluding background) connectivity=8"
+            #     )
+            #     try:
+            #         if len(areas):
+            #             self.get_logger().info(
+            #                 f"ping {sonar_msg.ping_id} CC: num={num-1} "
+            #                 f"area[min/med/max]={int(areas.min())}/{int(np.median(areas))}/{int(areas.max())} "
+            #                 f"A_min={A_min} A_max={A_max}"
+            #             )
+            #         else:
+            #             self.get_logger().info(
+            #                 f"ping {sonar_msg.ping_id} CC: num=0 (mask empty after morphology?)"
+            #             )
+            #     except Exception:
+            #         self.get_logger().info(
+            #             f"ping {sonar_msg.ping_id} CC: num={num-1} (error logging stats)"
+            #         )
+            #         pass
                 
 
             det_rc = []  # list of (range_row, beam_col) detections in POLAR indices
@@ -472,17 +482,19 @@ class FeatureExtraction(Node):
             det_rc = np.asarray(det_rc, dtype=np.int32)
 
             # Debug: log passed components
-            if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
-                try:
-                    if det_rc.size:
-                        self.get_logger().info(
-                            f"ping {sonar_msg.ping_id} CC passed={passed} det_idx: r[min/max]={det_rc[:,0].min()}/{det_rc[:,0].max()} "
-                            f"b[min/max]={det_rc[:,1].min()}/{det_rc[:,1].max()} n_ranges={sonar_msg.n_ranges} n_beams={sonar_msg.n_beams}"
-                        )
-                    else:
-                        self.get_logger().info(f"ping {sonar_msg.ping_id} CC passed={passed} det_idx: none")
-                except Exception:
-                    pass
+            # if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+            #     try:
+            #         if det_rc.size:
+            #             self.get_logger().info(
+            #                 f"ping {sonar_msg.ping_id} CC passed={passed} det_idx: r[min/max]={det_rc[:,0].min()}/{det_rc[:,0].max()} "
+            #                 f"b[min/max]={det_rc[:,1].min()}/{det_rc[:,1].max()} n_ranges={sonar_msg.n_ranges} n_beams={sonar_msg.n_beams}"
+            #             )
+            #         else:
+            #             self.get_logger().info(
+            #                 f"ping {sonar_msg.ping_id} CC passed={passed} det_idx: none"
+            #             )
+            #     except Exception:
+            #         pass
 
             # Convert polar detections (row, col) -> XY points
             if len(det_rc) == 0:
@@ -502,13 +514,13 @@ class FeatureExtraction(Node):
                 # Row index increases downward: row 0 = far, bottom = near.
                 range_m = (r_idx + 0.5) * dr
 
-                if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
-                    try:
-                        self.get_logger().info(
-                            f"range_m[min/max]={float(range_m.min()):.3f}/{float(range_m.max()):.3f} dr={dr}"
-                        )
-                    except Exception:
-                        pass
+                # if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+                #     try:
+                #         self.get_logger().info(
+                #             f"range_m[min/max]={float(range_m.min()):.3f}/{float(range_m.max()):.3f} dr={dr}"
+                #         )
+                #     except Exception:
+                #         pass
 
                 bearings_rad = (np.asarray(sonar_msg.bearings, dtype=np.float32) * 0.01) * np.pi / 180.0
                 # Beam index should correspond to original image column index (orig_width == n_beams)
@@ -516,13 +528,13 @@ class FeatureExtraction(Node):
                 b_idx_clipped = np.clip(b_idx.astype(np.int32), 0, n_beams - 1)
                 bearing = bearings_rad[b_idx_clipped]
 
-                if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
-                    try:
-                        self.get_logger().info(
-                            f"bearing[min/max]={float(bearing.min()):.3f}/{float(bearing.max()):.3f} rad bearings_len={len(bearings_rad)}"
-                        )
-                    except Exception:
-                        pass
+                # if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+                #     try:
+                #         self.get_logger().info(
+                #             f"bearing[min/max]={float(bearing.min()):.3f}/{float(bearing.max()):.3f} rad bearings_len={len(bearings_rad)}"
+                #         )
+                #     except Exception:
+                #         pass
 
                 # Keep your existing convention: subtract 90° to align with robot frame
                 bearing_ros = bearing - np.pi / 2.0
@@ -588,18 +600,18 @@ class FeatureExtraction(Node):
         #     )
 
         # Debug: log the points we will publish (rate-limited)
-        if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
-            try:
-                if points is not None and len(points):
-                    self.get_logger().info(
-                        f"publishing points: N={len(points)} "
-                        f"x[min/max]={float(points[:,0].min()):.2f}/{float(points[:,0].max()):.2f} "
-                        f"y[min/max]={float(points[:,1].min()):.2f}/{float(points[:,1].max()):.2f}"
-                    )
-                else:
-                    self.get_logger().info(f"publishing points: N=0")
-            except Exception:
-                pass
+        # if getattr(self, 'debug_enable', False) and (sonar_msg.ping_id % getattr(self, 'debug_every_n', 10) == 0):
+        #     try:
+        #         if points is not None and len(points):
+        #             self.get_logger().info(
+        #                 f"publishing points: N={len(points)} "
+        #                 f"x[min/max]={float(points[:,0].min()):.2f}/{float(points[:,0].max()):.2f} "
+        #                 f"y[min/max]={float(points[:,1].min()):.2f}/{float(points[:,1].max()):.2f}"
+        #             )
+        #         else:
+        #             self.get_logger().info(f"publishing points: N=0")
+        #     except Exception:
+        #         pass
 
         #publish the feature message
         self.publish_features(sonar_msg, points)
