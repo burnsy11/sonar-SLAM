@@ -3,8 +3,8 @@
   ros__parameters:
     # how often to add keyframes, this can be varied but between 1 and 4 meters is best
     keyframe_duration: 1.0
-    keyframe_translation: 3.0
-    keyframe_rotation: 0.5235987755982988  # deg(30) = pi/6
+    keyframe_translation: 0.5
+    keyframe_rotation: 0.1745 # deg(10)
 
     # define the noise models
     # x, y, theta in m, m, rad

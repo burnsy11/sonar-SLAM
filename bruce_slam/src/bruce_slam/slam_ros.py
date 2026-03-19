@@ -196,70 +196,127 @@ class SLAMNode(Node, SLAM):
         """
         #aquire the lock 
         self.lock.acquire()
+        try:
+            #get rostime from the point cloud (convert to float seconds for Keyframe)
+            stamp = feature_msg.header.stamp
+            time = stamp.sec + stamp.nanosec * 1e-9
+            odom_time = odom_msg.header.stamp.sec + odom_msg.header.stamp.nanosec * 1e-9
 
-        #get rostime from the point cloud (convert to float seconds for Keyframe)
-        stamp = feature_msg.header.stamp
-        time = stamp.sec + stamp.nanosec * 1e-9
+            #get the dead reckoning pose from the odom msg, GTSAM pose object
+            dr_pose3 = r2g(odom_msg.pose.pose)
 
-        #get the dead reckoning pose from the odom msg, GTSAM pose object
-        dr_pose3 = r2g(odom_msg.pose.pose)
+            #init a new key frame
+            frame = Keyframe(False, time, dr_pose3)
+            frame.stamp = stamp  # Store original ROS Time for publishing
 
-        #init a new key frame
-        frame = Keyframe(False, time, dr_pose3)
-        frame.stamp = stamp  # Store original ROS Time for publishing
-
-        #convert the point cloud message to a numpy array of 2D
-        points_gen = pc2.read_points(feature_msg, field_names=('x', 'y', 'z'), skip_nans=False)
-        points_list = list(points_gen)
-        if len(points_list) > 0:
-            # Extract x, y, z from structured array
-            points = np.array([[p[0], p[1], p[2]] for p in points_list], dtype=np.float32)
-            points = np.c_[points[:,0], points[:,1]]  # Use x, y for 2D SLAM
-        else:
-            points = np.zeros((0, 2), dtype=np.float32)
-
-        # In case feature extraction is skipped in this frame
-        if len(points) and np.isnan(points[0, 0]):
-            frame.status = False
-        else:
-            frame.status = self.is_keyframe(frame)
-
-        #set the frames twist
-        frame.twist = odom_msg.twist.twist
-
-        #update the keyframe with pose information from dead reckoning
-        if self.keyframes:
-            dr_odom = self.current_keyframe.dr_pose.between(frame.dr_pose)
-            pose = self.current_keyframe.pose.compose(dr_odom)
-            frame.update(pose)
-
-
-        #check frame staus, are we actually adding a keyframe? This is determined based on distance 
-        #traveled according to dead reckoning
-        if frame.status:
-
-            #add the point cloud to the frame
-            frame.points = points
-
-            #perform seqential scan matching
-            #if this is the first frame do not
-            if not self.keyframes:
-                self.add_prior(frame)
+            #convert the point cloud message to a numpy array of 2D
+            points_gen = pc2.read_points(feature_msg, field_names=('x', 'y', 'z'), skip_nans=False)
+            points_list = list(points_gen)
+            if len(points_list) > 0:
+                # Extract x, y, z from structured array
+                points = np.array([[p[0], p[1], p[2]] for p in points_list], dtype=np.float32)
+                points = np.c_[points[:,0], points[:,1]]  # Use x, y for 2D SLAM
             else:
-                self.add_sequential_scan_matching(frame)
+                points = np.zeros((0, 2), dtype=np.float32)
 
-            #update the factor graph with the new frame
-            self.update_factor_graph(frame)
+            self.get_logger().debug(
+                "SLAM sync pair feature=%.3f odom=%.3f dt=%.3f points=%d keyframes=%d"
+                % (time, odom_time, abs(time - odom_time), len(points), len(self.keyframes))
+            )
 
-            #if loop closures are enabled
-            #nonsequential scan matching is True (a loop closure occured) update graph again
-            if self.nssm_params.enable  and self.add_nonsequential_scan_matching():
-                self.update_factor_graph()
-            
-        #update current time step and publish the topics
-        self.current_frame = frame
-        self.publish_all()
-        self.lock.release()
+            # In case feature extraction is skipped in this frame
+            if len(points) and np.isnan(points[0, 0]):
+                frame.status = False
+                self.get_logger().debug("Feature extraction published NaN placeholder; skipping keyframe logic.")
+            else:
+                frame.status = self.is_keyframe(frame)
+
+            #set the frames twist
+            frame.twist = odom_msg.twist.twist
+
+            #update the keyframe with pose information from dead reckoning
+            if self.keyframes:
+                dr_odom = self.current_keyframe.dr_pose.between(frame.dr_pose)
+                pose = self.current_keyframe.pose.compose(dr_odom)
+                frame.update(pose)
+
+            #check frame staus, are we actually adding a keyframe? This is determined based on distance 
+            #traveled according to dead reckoning
+            if frame.status:
+                self.get_logger().debug(
+                    "Accepted keyframe candidate t=%.3f points=%d" % (time, len(points))
+                )
+
+                #add the point cloud to the frame
+                frame.points = points
+
+                #perform seqential scan matching
+                #if this is the first frame do not
+                if not self.keyframes:
+                    self.get_logger().debug("Adding prior for first keyframe.")
+                    self.add_prior(frame)
+                else:
+                    self.get_logger().debug(
+                        "Running sequential scan matching for keyframe index %d." % self.current_key
+                    )
+                    self.add_sequential_scan_matching(frame)
+
+                #update the factor graph with the new frame
+                self.update_factor_graph(frame)
+                self.get_logger().debug(
+                    "Graph updated keyframes=%d pose=(%.3f, %.3f, %.3f)"
+                    % (
+                        len(self.keyframes),
+                        self.current_keyframe.pose.x(),
+                        self.current_keyframe.pose.y(),
+                        self.current_keyframe.pose.theta(),
+                    )
+                )
+
+                #if loop closures are enabled
+                #nonsequential scan matching is True (a loop closure occured) update graph again
+                if self.nssm_params.enable:
+                    loop_result = self.add_nonsequential_scan_matching()
+                    if loop_result:
+                        self.get_logger().debug(
+                            "Loop closure result source=%s target=%s inserted=%s status=%s"
+                            % (
+                                getattr(loop_result, "source_key", None),
+                                getattr(loop_result, "target_key", None),
+                                getattr(loop_result, "inserted", None),
+                                getattr(loop_result, "status", None),
+                            )
+                        )
+                        self.update_factor_graph()
+                    else:
+                        self.get_logger().debug("No loop closure accepted for this keyframe.")
+            else:
+                if self.keyframes:
+                    dr_odom = self.current_keyframe.dr_pose.between(frame.dr_pose)
+                    translation = np.linalg.norm(dr_odom.translation())
+                    rotation = abs(dr_odom.theta())
+                    duration = frame.time - self.current_keyframe.time
+                    self.get_logger().debug(
+                        "Rejected keyframe candidate dt=%.3f trans=%.3f rot=%.3f thresholds=(%.3f, %.3f, %.3f)"
+                        % (
+                            duration,
+                            translation,
+                            rotation,
+                            self.keyframe_duration,
+                            self.keyframe_translation,
+                            self.keyframe_rotation,
+                        )
+                    )
+                else:
+                    self.get_logger().debug("Rejected initial frame unexpectedly.")
+
+            #update current time step and publish the topics
+            self.current_frame = frame
+            self.publish_all()
+        except Exception as exc:
+            self.get_logger().error(f"SLAM callback failed: {exc}")
+        finally:
+            self.lock.release()
 
     def publish_all(self)->None:
         """Publish to all ouput topics
