@@ -11,3 +11,6 @@ log/
 
 testing_data/
 custom_message/
+evaluation/results_*
+# Local evaluation recordings
+evaluation/*.pkl

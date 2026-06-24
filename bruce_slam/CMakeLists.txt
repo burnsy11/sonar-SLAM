@@ -57,6 +57,7 @@ install(PROGRAMS
   scripts/dead_reckoning_node.py
   scripts/feature_extraction_node.py
   scripts/kalman_node.py
+  scripts/eval_recorder_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

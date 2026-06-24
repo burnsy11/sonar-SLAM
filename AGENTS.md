@@ -1,5 +1,12 @@
 # Repository Guidelines
 
+## Motivation & Problem Definition
+This repository supports autonomous inspection of underwater pile structures — vertical cylindrical elements common in marine infrastructure such as jetties, piers, and offshore platforms. Inspecting these structures requires a robot to navigate and localise within a spatially constrained, visually degraded underwater environment where optical sensing is unreliable.
+
+The core problem is sonar-based localisation and mapping within a known pile field. A prior map of the pile layout is available: piles are cylindrical, uniform in diameter, and fixed at known spacings. The robot must exploit this structure — matching sonar observations against the prior pile map — to localise itself accurately enough to navigate between and around individual piles during inspection.
+
+This prior knowledge of pile geometry and layout is a deliberate constraint: rather than treating the environment as unknown, the system leverages the regularity of the pile field to make localisation tractable in a GPS-denied, acoustically complex underwater setting.
+
 ## Project Structure & Module Organization
 This repository is a ROS 2 workspace for sonar-based SLAM. Core runtime code lives in `bruce_slam/`: Python modules are under `bruce_slam/src/bruce_slam`, pybind11 C++ extensions are in `bruce_slam/src/bruce_slam/cpp`, launch files are in `bruce_slam/launch`, and tunable parameters are in `bruce_slam/config`. ROS interfaces live in `bruce_msgs/msg` and `bruce_msgs/srv`. `libnabo/` and `libpointmatcher/` are vendored dependencies; treat them as upstream code unless a task explicitly targets them.
 

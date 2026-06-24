@@ -5,6 +5,17 @@ ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
+# Install Node 22 and Codex
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g @openai/codex \
+    && rm -rf /var/lib/apt/lists/*
+    
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     libboost-system-dev \

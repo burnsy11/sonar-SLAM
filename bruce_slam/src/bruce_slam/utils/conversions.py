@@ -9,6 +9,11 @@ from sensor_msgs_py import point_cloud2 as pc2
 from geometry_msgs.msg import Pose, PoseStamped, Quaternion
 import struct
 
+try:
+    from oculus_interfaces.msg import Ping
+except Exception:  # pragma: no cover - keeps conversions importable without sonar msgs
+    Ping = None
+
 
 from .topics import *
 
@@ -230,7 +235,11 @@ def r2n(ros_msg) -> np.array:
         np.array: the image data in numpy array form
     """
 
-    if ros_msg._type == "oculus_interfaces/Ping":
+    if (Ping is not None and isinstance(ros_msg, Ping)) or (
+        hasattr(ros_msg, "ping_data")
+        and hasattr(ros_msg, "n_ranges")
+        and hasattr(ros_msg, "n_beams")
+    ):
         # Extract image data from new Ping message format
         n_ranges = ros_msg.n_ranges
         n_beams = ros_msg.n_beams
@@ -256,13 +265,14 @@ def r2n(ros_msg) -> np.array:
             img = ping_data.reshape(n_ranges, n_beams).astype(np.uint8)
         
         return np.float32(img)
-    elif ros_msg._type == "sensor_msgs/Image":
+    elif isinstance(ros_msg, Image):
         img = bridge.imgmsg_to_cv2(ros_msg, desired_encoding="passthrough")
         return np.array(img, "uint8")
-    elif ros_msg._type == "sensor_msgs/PointCloud2":
-        rows = ros_msg.width
-        cols = sum(f.count for f in ros_msg.fields)
-        return np.array([p for p in pc2.read_points(ros_msg)]).reshape(rows, cols)
+    elif isinstance(ros_msg, PointCloud2):
+        points = pc2.read_points_numpy(ros_msg, skip_nans=False)
+        if points.ndim == 1:
+            points = points.reshape((-1, 1))
+        return np.asarray(points)
     else:
         raise NotImplementedError(
             "Not implemented from {} to numpy".format(str(type(ros_msg)))

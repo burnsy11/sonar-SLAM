@@ -1,0 +1,26 @@
+{
+  "map_yaml": "/workspaces/sonar-SLAM/gt_occupancy_grid.yaml",
+  "n_piles": 60,
+  "pile_width": 0.14766666666666672,
+  "pile_height": 0.10766666666666667,
+  "resolution": 0.01,
+  "origin_xy": [
+    -0.995,
+    -4.995
+  ],
+  "bdt_shape": [
+    1499,
+    4100
+  ],
+  "bdt_max_dist": 5.0,
+  "boundary_pixels": 2936,
+  "min_pile_spacing": 0.7184184017687747,
+  "x_range": [
+    0.45499999999999996,
+    30.87
+  ],
+  "y_range": [
+    -3.9450000000000003,
+    9.524999999999999
+  ]
+}
